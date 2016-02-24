@@ -601,7 +601,7 @@ class DispersedFringeSensor(SegmentPistonSensor):
             if k == self._N_SRC*12: break
     	return dataCube
 
-    def calibrate(self, src, gmt):
+    def calibrate(self, src):#, gmt):
 	"""
 	Calibrates the lobe detection masks (spsmask).
  
@@ -612,10 +612,10 @@ class DispersedFringeSensor(SegmentPistonSensor):
     	gmt : GMT_MX
              The GMT object
 	"""
-	gmt.reset()
-	src.reset()
+	#gmt.reset()
+	#src.reset()
 	self.reset()
-	gmt.propagate(src)
+	#gmt.propagate(src)
 	self.propagate(src)
 	self.fft()
 	dataCube = self.get_data_cube(data_type='fftlet')
