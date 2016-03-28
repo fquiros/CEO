@@ -531,6 +531,7 @@ for (k=0;k<N_LAMBDA;k++) {
   d *= (dispersion/pixel_scale);
   camera_array[k].propagateNoOverlapSPS(&lenslet_src, d, wavenumber);
 }
+  camera.N_FRAME++;
 @
 
 \subsubsection{Propagation kernel}
