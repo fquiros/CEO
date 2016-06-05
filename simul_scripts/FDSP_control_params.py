@@ -12,7 +12,7 @@ totSimulTime = 30. # Total simulated time [seconds]
 simul_turb         = True
 simul_onaxis_AO    = True
 simul_PS_control   = True
-simul_FDSP_control = False
+simul_FDSP_control = True
 
 eval_perf_onaxis    = True
 eval_perf_field     = False
