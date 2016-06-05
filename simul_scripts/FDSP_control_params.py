@@ -58,7 +58,7 @@ if simul_SPS==True:
     sps_seed = 1928
     
     # IM calib options:
-    remove_on_pist = False   # Remove on-axis residual piston in the calibration of FDSP IM
+    remove_on_pist = True   # Remove on-axis residual piston in the calibration of FDSP IM
     PS_CL_calib    = False   # Perform Segment Piston IM calibration in closed-loop (using 'zernikes').
     CL_calib_modes = 'TT'    # Choose between 'zernikes' or 'TT' (TT only implemented in FDSP IM calib)
     gPS   = 0.8
