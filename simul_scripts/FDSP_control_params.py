@@ -71,7 +71,7 @@ if simul_SPS==True:
     samplingTime = 30.0  # DFS sampling time [seconds]
     sps_exp_delay_count_max = 2  # number of cycles to delay exposure after FDSP correction
     # (to avoid M1-M2 transient)
-    sps_sampl_iter = 5
+    sps_sampl_iter = 9
     totSimulTime = sps_sampl_iter*samplingTime + exposureTime
 
 #---- ON-AXIS AO system parameters:
@@ -91,9 +91,9 @@ if simul_onaxis_AO == True:
     gAO = 0.8
 
 #---- Initial scramble parameters:
-scramble_tt = False
+scramble_tt = True
 scramble_pist = False
-tt_scramble_rms = 50e-3   #arcsec
+tt_scramble_rms = 150e-3   #arcsec
 pist_scramble_rms = 1e-6  #m SURF
 
 
