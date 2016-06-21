@@ -12,7 +12,7 @@ totSimulTime = 30. # Total simulated time [seconds]
 simul_turb         = True
 simul_onaxis_AO    = True
 simul_PS_control   = True
-simul_FDSP_control = False
+simul_FDSP_control = True
 
 eval_perf_onaxis    = True
 eval_perf_field     = True
@@ -71,7 +71,7 @@ if simul_SPS==True:
     samplingTime = 7.0  # DFS sampling time [seconds]
     sps_exp_delay_count_max = 2  # number of cycles to delay exposure after FDSP correction
     # (to avoid M1-M2 transient)
-    sps_sampl_iter = 10
+    sps_sampl_iter = 15
     totSimulTime = sps_sampl_iter*samplingTime + exposureTime
 
 #---- ON-AXIS AO system parameters:
