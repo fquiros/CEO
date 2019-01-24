@@ -32,35 +32,43 @@ struct shackHartmann {
   <<parameters>>
   void setup(int N_SIDE_LENSLET, int N_PX_LENSLET, float d,
 	     int DFT_osf_, int N_PX_IMAGE, int BIN_IMAGE, int N_GS);
-  void cleanup(void);
-  void identify_valid_lenslet(source *src, float threshold);
-  void set_reference_slopes(source *src);
-  void calibrate(source *src, float threshold);
-  void propagate(source *gs);
-  void process(void);
-  void analyze(source *gs);
+  <<shackHartmann common methods>>
   float* get_frame_dev_ptr(void);
-  void get_valid_reference_slopes(float *d__valid_slopes);
-  void get_valid_slopes(float *d__valid_slopes);
-  void get_valid_slopes_norm(float *d__valid_slopes_norm);
+  void update_lenslet(float *filter);
 };
-
+ 
 struct geometricShackHartmann {
 
   <<parameters>>
+  <<geometric parameters>>
   void setup(int N_SIDE_LENSLET, float d, int N_GS);
-  void cleanup(void);
-  void identify_valid_lenslet(source *src, float threshold);
-  void set_reference_slopes(source *src);
-  void calibrate(source *src, float threshold);
-  void analyze(source *gs);
-  void get_valid_reference_slopes(float *d__valid_slopes);
-  void get_valid_slopes(float *d__valid_slopes);
-  void get_valid_slopes_norm(float *d__valid_slopes_norm);
+  <<shackHartmann common methods>>
+  void reset(void);
+};
+
+struct tt7 {
+
+  <<parameters>>
+  void setup(int N_SIDE_LENSLET, int N_PX_LENSLET, float d,
+	     int DFT_osf_, int N_PX_IMAGE, int BIN_IMAGE, int N_GS);
+  <<shackHartmann common methods>>
+  float* get_frame_dev_ptr(void);
+  void update_lenslet(float *filter);
 };
 
 #endif // __SHACKHARTMANN__
-
+@ with
+<<shackHartmann common methods>>=
+void cleanup(void);
+void identify_valid_lenslet(source *src, float threshold);
+void set_reference_slopes(source *src);
+void calibrate(source *src, float threshold);
+void propagate(source *gs);
+void process(void);
+void analyze(source *gs);
+void get_valid_reference_slopes(float *d__valid_slopes);
+void get_valid_slopes(float *d__valid_slopes);
+void get_valid_slopes_norm(float *d__valid_slopes_norm);
 @
 \subsection{Source}
 \label{sec:source}
@@ -82,12 +90,18 @@ struct geometricShackHartmann {
 <<get detector frame>>
 <<valid lenslet slopes>>
 <<valid lenslet slopes norm>>
+<<update valid lenslet>>
+<<geometric reset>>
+
+<<tt7 setup>>
 @
 
 \section{Parameters}
 \label{sec:parameters}
 
 \index{shackHartmann!shackHartmann}
+\index{shackHartmann!tt7}
+\index{shackHartmann!geometricShackHartmann}
 The parameters of the [[shackHartmann]] structure are:
 \begin{itemize}
 \item the number of wavefront sensor:
@@ -105,6 +119,12 @@ int N_SLOPE;
 @ \item the reference slopes:
 <<parameters>>=
 float *d__c0, *d__cx0, *d__cy0;
+@ \item the instantaneous geometric centroids:
+<<geometric parameters>>=
+float *_d__c_, *_d__cx_, *_d__cy_;
+@ \item the geometric centroids accumulation factor:
+<<geometric parameters>>=
+int N_FRAME;
 @ \item the valid lenslet mask:
 <<parameters>>=
 mask valid_lenslet;
@@ -132,6 +152,9 @@ float intensity_threshold;
 @ \item the slopes gain:
 <<parameters>>=
 float slopes_gain;
+@ \item CUBLAS handle:
+<<geometric parameters>>=
+cublasHandle_t handle;
 @ \end{itemize}
 
 \section{Functions}
@@ -154,30 +177,43 @@ The [[shackHartmann]] structure is initialized with:
 void shackHartmann::setup(int N_SIDE_LENSLET_, int N_PX_LENSLET, float d,
 			  int DFT_osf_, int N_PX_IMAGE, int BIN_IMAGE, int N_GS)
 {
-  lenslet_pitch = d;
-  DFT_osf    = DFT_osf_;
-  N_SIDE_LENSLET = N_SIDE_LENSLET_;
-  N_LENSLET  = N_SIDE_LENSLET*N_SIDE_LENSLET;
-  N_ACTUATOR = (N_SIDE_LENSLET+1)*(N_SIDE_LENSLET+1);
   N_WFS      = N_GS;
-  N_SLOPE    = N_LENSLET*N_GS*2;
-  slopes_gain = 1.0;
-  HANDLE_ERROR( cudaMalloc( (void**)&d__c0 , sizeof(float) *N_SLOPE ) );
-  HANDLE_ERROR( cudaMemset( d__c0, 0, sizeof(float)*N_SLOPE ) );
-  d__cx0 = d__c0;
-  d__cy0 = d__c0 + N_LENSLET;
-  valid_lenslet.setup(N_LENSLET*N_WFS);//,(N_SIDE_LENSLET-1)*d);
-  valid_actuator.setup(N_ACTUATOR*N_WFS);//,N_SIDE_LENSLET*d);
-  camera.setup(N_PX_LENSLET, N_SIDE_LENSLET, DFT_osf,
-		     N_PX_IMAGE,  BIN_IMAGE, N_GS);
-  data_proc.setup(N_SIDE_LENSLET, N_GS);
-  <<lenslet mask pointer>>
+  <<shackHartmann setup>>
 }
+@  with
+<<shackHartmann setup>>=
+lenslet_pitch = d;
+DFT_osf    = DFT_osf_;
+N_SIDE_LENSLET = N_SIDE_LENSLET_;
+N_LENSLET  = N_SIDE_LENSLET*N_SIDE_LENSLET;
+N_ACTUATOR = (N_SIDE_LENSLET+1)*(N_SIDE_LENSLET+1);
+N_SLOPE    = N_LENSLET*N_WFS*2;
+slopes_gain = 1.0;
+HANDLE_ERROR( cudaMalloc( (void**)&d__c0 , sizeof(float) *N_SLOPE ) );
+HANDLE_ERROR( cudaMemset( d__c0, 0, sizeof(float)*N_SLOPE ) );
+d__cx0 = d__c0;
+d__cy0 = d__c0 + N_LENSLET;
+valid_lenslet.setup(N_LENSLET*N_WFS);//,(N_SIDE_LENSLET-1)*d);
+valid_actuator.setup(N_ACTUATOR*N_WFS);//,N_SIDE_LENSLET*d);
+camera.setup(N_PX_LENSLET, N_SIDE_LENSLET, DFT_osf,
+N_PX_IMAGE,  BIN_IMAGE, N_WFS);
+data_proc.setup(N_SIDE_LENSLET, N_WFS);
+<<lenslet mask pointer>>
 @
 The [[lenslet_mask]] in [[data_proc]] now points to the mask in the [[valid_lenslet]] [[mask]] structure
 <<lenslet mask pointer>>=
 HANDLE_ERROR( cudaFree( data_proc.lenslet_mask) );
 data_proc.lenslet_mask = valid_lenslet.m;
+@ 
+The GMT TT7 wavefront sensor is a special kind of Shack--Hartmann wavefront sensor with one imaging system per GMT pupil segment all using the same single guide star.
+\index{shackHartmann!tt7!setup}
+<<tt7 setup>>=
+void tt7::setup(int N_SIDE_LENSLET_, int N_PX_LENSLET, float d,
+                int DFT_osf_, int N_PX_IMAGE, int BIN_IMAGE, int N_GS)
+{
+  N_WFS = 7;
+  <<shackHartmann setup>>
+}
 @ 
 The default [[shackHartmann]] structure uses a diffractive model to propagate the wavefront onto the detector and then computes the centroids.
 The [[geometricShackHartmann]] structure does not propagate the wavefront instead the centroids are computed directly from the wavefront phase.
@@ -196,10 +232,16 @@ void geometricShackHartmann::setup(int N_SIDE_LENSLET_, float d, int N_GS)
   HANDLE_ERROR( cudaMemset( d__c0, 0, sizeof(float)*N_SLOPE ) );
   d__cx0 = d__c0;
   d__cy0 = d__c0 + N_LENSLET;
+  HANDLE_ERROR( cudaMalloc( (void**)&_d__c_ , sizeof(float) *N_SLOPE ) );
+  HANDLE_ERROR( cudaMemset( _d__c_, 0, sizeof(float)*N_SLOPE ) );
+  _d__cx_ = _d__c_;
+  _d__cy_ = _d__c_ + N_LENSLET;
   valid_lenslet.setup(N_LENSLET*N_WFS);//,(N_SIDE_LENSLET-1)*d);
   valid_actuator.setup(N_ACTUATOR*N_WFS);//,N_SIDE_LENSLET*d);
   data_proc.setup(N_SIDE_LENSLET, N_GS);
   <<lenslet mask pointer>>
+  cublasCreate(&handle);
+  N_FRAME = 0;
 }
 
 @
@@ -208,10 +250,19 @@ Allocated memory is freed with:
 <<cleanup>>=
 void shackHartmann::cleanup(void)
 {
-  <<cleanup common>>
-  fprintf(stdout," |-");
-  camera.cleanup();
+  <<cleanup WFSs>>
 }
+@ \index{shackHartmann!tt7!cleanup}
+<<cleanup>>=
+void tt7::cleanup(void)
+{
+  <<cleanup WFSs>>
+}
+@  with
+<<cleanup WFSs>>=
+<<cleanup common>>
+fprintf(stdout," |-");
+camera.cleanup();
 @ 
 or with
 \index{shackHartmann!geometricShackHartmann!cleanup}
@@ -219,6 +270,8 @@ or with
 void geometricShackHartmann::cleanup(void)
 {
   <<cleanup common>>
+  HANDLE_ERROR( cudaFree( _d__c_) );
+  cublasDestroy(handle);
 }
 @ where
 <<cleanup common>>=
@@ -246,6 +299,8 @@ void shackHartmann::identify_valid_lenslet(source *src, float threshold) {
   data_proc.MASK_SET = 1;
   camera.reset();
 } 
+void tt7::identify_valid_lenslet(source *src, float threshold) {
+} 
 @
 The reference slopes are set with:
 \index{shackHartmann!shackHartmann!set\_reference\_slopes}
@@ -255,23 +310,33 @@ void shackHartmann::set_reference_slopes(source *src) {
   <<WFS calibration reference slopes>>
   camera.reset();
 }
+void tt7::set_reference_slopes(source *src) {
+}
 @
 The WFS full calibration routine is given by:
 \index{shackHartmann!shackHartmann!calibrate}
 <<WFS calibration>>=
 void shackHartmann::calibrate(source *src, float threshold) {
-  <<WFS calibration source propagation>>
-  <<WFS calibration reference slopes>>
-  <<WFS calibration valid lenslet>>
-  data_proc.MASK_SET = 1;
-  camera.reset();
+  <<WFS calibration common>>
 }
+@ \index{shackHartmann!shackHartmann!calibrate}
+<<WFS calibration>>=
+void tt7::calibrate(source *src, float threshold) {
+  <<WFS calibration common>>
+}
+@ with 
+<<WFS calibration common>>=
+<<WFS calibration source propagation>>
+<<WFS calibration reference slopes>>
+<<WFS calibration valid lenslet>>
+data_proc.MASK_SET = 1;
+camera.reset();
 @
 The wavefront sensor need first to be calibrated with a reference calibration source.
 <<WFS calibration source propagation>>=
 //camera.pixel_scale = src->wavelength()/(lenslet_pitch*DFT_osf);
 //pixel_scale = camera.pixel_scale*camera.BIN_IMAGE*slopes_gain;
-camera.propagate(src);
+propagate(src);
 data_proc.get_data(camera.d__frame,camera.N_PX_CAMERA);
 @
 The slopes derived from the calibration wavefront will be set a the reference slopes.
@@ -347,7 +412,19 @@ __global__ void set_valid_lenslet(char *lenslet_mask, char *actuator_mask,
     }
 }
 @
-
+The valid lenslet mask can be modified with
+<<update valid lenslet>>=
+void shackHartmann::update_lenslet(float *filter)
+{
+  valid_lenslet.alter(filter);
+  valid_lenslet.set_filter();
+  valid_lenslet.set_index();
+  valid_actuator.set_filter();
+}
+void tt7::update_lenslet(float *filter)
+{
+}
+@ 
 \subsubsection{Geometric model}
 \label{sec:geometric-model}
 
@@ -442,6 +519,13 @@ __global__ void  set_geometric_valid_lenslet(float *valid_lenslet_f,
        }
     }
 }
+@ 
+\index{shackHartmann!geometricShackHartmann!reset}
+<<geometric reset>>=
+void geometricShackHartmann::reset() {
+  N_FRAME = 0;
+  HANDLE_ERROR( cudaMemset( data_proc.d__c, 0, sizeof(float)*N_SLOPE ) );
+}
 @
 \subsection{Wavefront processing}
 \label{sec:wavefront-processing}
@@ -450,42 +534,82 @@ The guide star [[gs]] is propagated through the lenslet array to the detector:
 \index{shackHartmann!shackHartmann!propagate}
 <<wavefront propagation>>=
 void shackHartmann::propagate(source *gs) {
-    /* printf("slopes gain:%.2E\n",slopes_gain); */
-  camera.pixel_scale = gs->wavelength()/(lenslet_pitch*DFT_osf);
-  /* printf("pixel scale:%.2E\n",pixel_scale); */
-  pixel_scale = camera.pixel_scale*camera.BIN_IMAGE*slopes_gain;
+  <<wavefront propagation common>>
   camera.propagate(gs);
 }
+@ \index{shackHartmann!tt7!propagate}
+<<wavefront propagation>>=
+void tt7::propagate(source *gs) {
+  <<wavefront propagation common>>
+  camera.propagateTT7(gs);
+}
+@  with
+<<wavefront propagation common>>=
+/* printf("slopes gain:%.2E\n",slopes_gain); */
+camera.pixel_scale = gs->wavelength()/(lenslet_pitch*DFT_osf);
+/* printf("pixel scale:%.2E\n",pixel_scale); */
+pixel_scale = camera.pixel_scale*camera.BIN_IMAGE;
 @ and the resulting frame is processed to extract the centroids
 \index{shackHartmann!shackHartmann!process}
 <<wavefront centroiding>>=
 void shackHartmann::process(void) {
-  data_proc.get_data(camera.d__frame,camera.N_PX_CAMERA,
-		     d__cx0,d__cy0,pixel_scale,
-		     valid_lenslet.m);
+  <<wavefront centroiding common>>
 }
+@ \index{shackHartmann!tt7!process}
+<<wavefront centroiding>>=
+void tt7::process(void) {
+  <<wavefront centroiding common>>
+}
+@ with
+<<wavefront centroiding common>>=
+data_proc.get_data(camera.d__frame,camera.N_PX_CAMERA,
+                   d__cx0,d__cy0,pixel_scale*slopes_gain,
+                   valid_lenslet.m);
 @
 Noiseless propagation and centroiding can be performed, for the diffractive and geometric  model, respectively, with a single call to:
 \index{shackHartmann!shackHartmann!analyze}
 <<wavefront processing>>=
 void shackHartmann::analyze(source *gs) {
-  propagate(gs);
-  process();
+  <<wavefront processing common>>
+}
+@ \index{shackHartmann!tt7!analyze}
+<<wavefront processing>>=
+void tt7::analyze(source *gs) {
+  <<wavefront processing common>>
+}
+@ with
+<<wavefront processing common>>=
+propagate(gs);
+process();
+@ 
+\index{shackHartmann!geometricShackHartmann!propagate}
+<<wavefront processing>>=
+void geometricShackHartmann::propagate(source *gs) {
+  gs->wavefront.finite_difference(_d__cx_,
+				  _d__cy_,
+				  N_SIDE_LENSLET,
+				  lenslet_pitch,
+				  &valid_lenslet);
+  float alpha = 1.0;
+  CUBLAS_ERROR( cublasSaxpy(handle, N_SLOPE, &alpha, _d__c_, 1, data_proc.d__c, 1) );
+  ++N_FRAME;
+}
+@ 
+\index{shackHartmann!geometricShackHartmann!process}
+<<wavefront processing>>=
+void geometricShackHartmann::process() {
+  float alpha;
+  alpha= 1.0/N_FRAME;
+  CUBLAS_ERROR( cublasSscal(handle, N_SLOPE, &alpha, data_proc.d__c, 1) );
+  alpha = -1.0;
+  CUBLAS_ERROR( cublasSaxpy(handle, N_SLOPE, &alpha, d__c0, 1, data_proc.d__c, 1) );
 }
 @ 
 \index{shackHartmann!geometricShackHartmann!analyze}
 <<wavefront processing>>=
 void geometricShackHartmann::analyze(source *gs) {
-  gs->wavefront.finite_difference(data_proc.d__cx,
-				  data_proc.d__cy,
-				  N_SIDE_LENSLET,
-				  lenslet_pitch,
-				  &valid_lenslet);
-  cublasHandle_t handle;
-  float alpha = -1.0;
-  cublasCreate(&handle);
-  CUBLAS_ERROR( cublasSaxpy(handle, N_SLOPE, &alpha, d__c0, 1, data_proc.d__c, 1) );
-  cublasDestroy(handle);
+  propagate(gs);
+  process();
 }
 @
 A pointer to the detector frame is obtained with
@@ -500,6 +624,12 @@ The slopes in the valid lenslet are extracted with
 \index{shackHartmann!shackHartmann!get\_valid\_slopes}
 <<valid lenslet slopes>>=
 void shackHartmann::get_valid_slopes(float *d__valid_slopes)
+{
+  <<valid lenslet slopes common>>
+}
+@ \index{shackHartmann!tt7!get\_valid\_slopes}
+<<valid lenslet slopes>>=
+void tt7::get_valid_slopes(float *d__valid_slopes)
 {
   <<valid lenslet slopes common>>
 }
@@ -544,6 +674,9 @@ void shackHartmann::get_valid_reference_slopes(float *d__valid_slopes)
 {
   <<valid lenslet reference slopes common>>
 }
+void tt7::get_valid_reference_slopes(float *d__valid_slopes)
+{
+}
 @ 
 \index{shackHartmann!geometricShackHartmann!get\_valid\_reference\_slopes}
 <<valid lenslet slopes>>=
@@ -566,6 +699,9 @@ It is computed with:
 void shackHartmann::get_valid_slopes_norm(float *d__valid_slopes_norm)
 {
   <<valid lenslet slopes norm common>>
+}
+void tt7::get_valid_slopes_norm(float *d__valid_slopes_norm)
+{
 }
 @ 
 \index{shackHartmann!geometricShackHartmann!get\_valid\_slopes\_norm}

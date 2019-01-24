@@ -6,23 +6,23 @@
 
 <<imaging.pxd>>=
 from source cimport source, Source
-from utilities cimport cuFloatArray
-from shackHartmann cimport ShackHartmann
-from pyramid cimport Pyramid
-from segmentPistonSensor cimport SegmentPistonSensor
+from utilities cimport Sensor, cuFloatArray
 cdef extern from "imaging.h":
     cdef cppclass imaging:
         int N_PX_PUPIL, N_DFT, N_SIDE_LENSLET, N_PX_CAMERA, N_SOURCE, N_FRAME
-        float photoelectron_gain, N_PHOTON_PER_FRAME
+        float photoelectron_gain, N_PHOTON_PER_FRAME, N_PHOTON_TOTAL
         float *d__frame
+        char absolute_pointing
         void setup(int , int , int , int , int, int)
         void cleanup()
-        void set_pointing_direction(float , float )
+        void set_pointing_direction(float *, float *)
         void propagate(source *)
-        void propagateThroughFieldStop(source *, float field_stop_diam)
+        void propagateThroughFieldStop(source *, float)
         void propagateThroughPyramid(source *)
         void propagateThroughModulatedPyramid(source *, float)
         void readout(float, float)
+        void readout(float, float, float, float)
+        void noiseless_readout(float)
         void reset()
         void reset_rng(int)
 <<class definitions>>
@@ -31,13 +31,18 @@ cdef extern from "imaging.h":
 \label{sec:class-definitions}
 
 <<class definitions>>=
-cdef class Imaging:
+cdef class Imaging(Sensor):
     cdef:
         imaging *_c_imaging
         readonly int N_SIDE_LENSLET, N_PX_PUPIL, DFT_osf, \
-                     N_PX_IMAGE, BIN_IMAGE, N_SOURCE, N_PX_FRAME
+                     N_PX_IMAGE, BIN_IMAGE, N_SOURCE, \
+                     N_PX_FRAME, ghost_N_FRAME
         readonly cuFloatArray frame
         char isPtr
+        public float exposureTime, readOutNoiseRms, nBackgroundPhoton, noiseFactor
+        public float[:,:] ghost_frame
+    cdef void set_ptr(Imaging, imaging *)
+
 @
 \section{PYX file}
 \label{sec:pyx-file}
@@ -46,7 +51,7 @@ cdef class Imaging:
 <<imaging.pyx>>=
 from scipy.optimize import bisect
 import numpy as np
-cdef class Imaging:
+cdef class Imaging(Sensor):
     """
     Creates an imaging object.
 
@@ -64,6 +69,16 @@ cdef class Imaging:
        The binning factor of the imagelet (>=1).
     N_SOURCE : int
        The number of guide stars (>=1).
+    photoelectron_gain : float
+        The photon to electron conversion gain of the camera; default: 1
+    exposureTime : float
+       The detector exposure time in second; default: 1s
+    readOutNoiseRms : float
+       The detector read-out noise rms; default: 0
+    nBackgroundPhoton : float
+       The number of background photon; default: 0
+    noiseFactor : float
+       The excess noise factor; default: 1
 
     Attributes
     ----------
@@ -84,7 +99,15 @@ cdef class Imaging:
     frame : cuFloatArray
         The detector frame of size [`N_SOURCE`x`N_PX_CAMERA`,`N_PX_CAMERA`]
     photoelectron_gain : float
-        The photon to electron conversion gain of the camera
+        The photon to electron conversion gain of the camera; default: 1
+    exposureTime : float
+       The detector exposure time in second; default: 1s
+    readOutNoiseRms : float
+       The detector read-out noise rms; default: 0
+    nBackgroundPhoton : float
+       The number of background photon; default: 0
+    noiseFactor : float
+       The excess noise factor; default: 1
 
     See also
     --------
@@ -96,12 +119,13 @@ cdef class Imaging:
         self._c_imaging = new imaging()
 
     def __init__(self, int N_SIDE_LENSLET=1, int N_PX_PUPIL=128,
-		 DFT_osf=2, N_PX_IMAGE=None, BIN_IMAGE=1,
-		 N_SOURCE=1,
-		 ShackHartmann wfs=None,
-		 SegmentPistonSensor sps=None,
-		 Pyramid pym=None):
-        if N_PX_IMAGE is None:
+		 int DFT_osf=2, int N_PX_IMAGE=0, 
+                 int BIN_IMAGE=1, int N_SOURCE=1,
+                 float exposureTime=1.0, float readOutNoiseRms=0.0, 
+                 float nBackgroundPhoton=0.0, float noiseFactor=1.0,
+                 float photoElectronGain=1.0,
+		 char isPtr=0, **kwargs):
+        if N_PX_IMAGE==0:
             N_PX_IMAGE = N_PX_PUPIL;
         self.N_SIDE_LENSLET = N_SIDE_LENSLET
         self.N_PX_PUPIL     = N_PX_PUPIL
@@ -110,6 +134,7 @@ cdef class Imaging:
         self.BIN_IMAGE      = BIN_IMAGE
         self.N_PX_FRAME     = self.N_PX_IMAGE*self.N_SIDE_LENSLET/self.BIN_IMAGE
         self.N_SOURCE       = N_SOURCE
+        """
         if wfs is not None:
             self.isPtr = 1
             self._c_imaging = &(wfs._c_shackHartmann.camera)
@@ -126,13 +151,47 @@ cdef class Imaging:
             self._c_imaging.setup(N_PX_PUPIL, N_SIDE_LENSLET,
                                   DFT_osf, N_PX_IMAGE,
                                   BIN_IMAGE, N_SOURCE)
+        """
+        self.isPtr = isPtr
         self.frame = cuFloatArray(shape=(self.N_SOURCE*self.N_PX_FRAME,
 				         self.N_PX_FRAME))
-        self.frame._c_gpu.dev_data = self._c_imaging.d__frame
+        if not self.isPtr:
+            if N_PX_IMAGE is None:
+                N_PX_IMAGE = N_PX_PUPIL
+            self._c_imaging.setup(N_PX_PUPIL, N_SIDE_LENSLET,
+                                  DFT_osf, N_PX_IMAGE,
+                                  BIN_IMAGE, N_SOURCE)
+            self.frame._c_gpu.dev_data = self._c_imaging.d__frame
+            self._c_imaging.photoelectron_gain = photoElectronGain
 
+        self.exposureTime      = exposureTime
+        self.readOutNoiseRms   = readOutNoiseRms
+        self.nBackgroundPhoton = nBackgroundPhoton
+        self.noiseFactor       = noiseFactor
+
+    cdef void set_ptr(self, imaging *camera_ptr):
+        self._c_imaging = camera_ptr
+        self.frame._c_gpu.dev_data = self._c_imaging.d__frame
+        
     def __dealloc__(self):
         if not self.isPtr:
             self._c_imaging.cleanup()
+
+    def __invert__(self):
+        """
+        Reset the sensor
+        """
+        self.reset()
+
+    def __pos__(self):
+        """
+        Read-out and reset the detector
+        """
+        self._c_imaging.readout(self.exposureTime,
+                                self.readOutNoiseRms,
+                                self.nBackgroundPhoton,
+                                self.noiseFactor)
+        self.reset()
 
     def calibrate(self, Source src, args=None):
         pass
@@ -194,7 +253,8 @@ cdef class Imaging:
         else:
             self._c_imaging.propagateThroughPyramid(src._c_source)
 
-    def readOut(self,float exposureTime, float readOutNoiseRms):
+    def readOut(self,float exposureTime, float readOutNoiseRms, 
+                float nBackgroundPhoton=0.0, float noiseFactor=1.0):
         """
         Reads-out the detector
 
@@ -204,13 +264,31 @@ cdef class Imaging:
             The exposure time of the camera
         readOutNoiseRms : float
             The read-out moise rms of the camera
+        nBackgroundPhoton : float (optional)
+            The number of background photon per second; default: 0
+        noiseFactor : float (optional)
+            The excess noise factor for EMCCD ($\sqrt{2}$); default: 1
         """
-        self._c_imaging.readout(exposureTime,readOutNoiseRms)
+        self._c_imaging.readout(exposureTime,readOutNoiseRms,
+                                nBackgroundPhoton, noiseFactor)
+
+    def noiselessReadOut(self,float exposureTime):
+        """
+        Reads-out the detector
+
+        Parameters
+        ----------
+        exposureTime : float
+            The exposure time of the camera
+        """
+        self._c_imaging.noiseless_readout(exposureTime)
 
     def reset(self):
         """
         Resets the frame of the camera to 0
         """
+        self.ghost_frame = self.frame.host()
+        self.ghost_N_FRAME = self._c_imaging.N_FRAME
         self._c_imaging.reset()
 
     def reset_rng(self, int SEED):
@@ -219,7 +297,19 @@ cdef class Imaging:
         """
         self._c_imaging.reset_rng(SEED)
 
-    def ee80(self,double units=1.0):
+    def pixelScale(self,Source src):
+        """
+        Returns the pixel scale in radian
+        """
+        return (src.wavelength/src.rays.L)*self.N_SIDE_LENSLET*self.BIN_IMAGE/self.DFT_osf
+
+    def pixelScaleArcsec(self,Source src):
+        """
+        Returns the pixel scale in arcsecond
+        """
+        return self.pixelScale(src)*180.0*3600.0/np.pi
+
+    def ee80(self,double units=1.0, bint from_ghost=0):
         """
         Computes the 80% ensquared energy patch size
         
@@ -234,11 +324,16 @@ cdef class Imaging:
             The 80% ensquared energy patch size in pixel (default) or units if given
         """
         cdef:
-            int k, n, m
+            int k, n, m, N_FRAME
             double[::1] q 
             double[:,::1] x, y, gate
             double[:] u, v
-        psf   = self.frame.host()
+        if from_ghost:
+            psf = np.asarray( self.ghost_frame )
+            N_FRAME = self.ghost_N_FRAME
+        else:
+            psf = self.frame.host()  
+            N_FRAME = self._c_imaging.N_FRAME
         n,m   = psf.shape
         n /= self.N_SOURCE
         #u     = np.linspace(-1.0,1.0,n)*(n/2.0)
@@ -252,8 +347,7 @@ cdef class Imaging:
             #gate = np.logical_and(np.abs(x)<=_ee_Delta_,np.abs(y)<=_ee_Delta_)
             gate = np.hypot(x,y)<=_ee_Delta_
             return np.sum(_psf_*gate)/(self._c_imaging.N_PHOTON_PER_FRAME*\
-                                       self._c_imaging.N_FRAME/\
-                                       self.N_SOURCE) - 0.8
+                                       N_FRAME/self.N_SOURCE) - 0.8
         q = np.zeros(self.N_SOURCE)
         for k in range(self.N_SOURCE):
             try:

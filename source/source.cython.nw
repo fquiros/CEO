@@ -31,7 +31,7 @@ cdef extern from "source.h":
 
 <<source.pxd contents>>=
     cdef cppclass bundle:
-        int N_RAY, N_BUNDLE
+        int N_RAY, N_BUNDLE, N_L
 	int *d__piston_mask
         rtd refractive_index, L
         rtd *d__sphere_radius
@@ -125,6 +125,8 @@ cdef class Bundle:
         A 7 columns array where each column is a mask corresponding to 1 segment
     L : rtd, read only
         The size in meter of the box encompassing the ray bundle
+    N_L : int, read only
+        The sampling of the box encompassing the ray bundle (the number of rays is N_L$\times$N_L
     """
 
     def __cinit__(self, Source src):
@@ -227,7 +229,7 @@ def ee80(self,spaxel="circle"):
     Returns
     -------
     float
-        The size of the geometric EE80 square in radian
+        The size of the geometric EE80 square in meter
     """
     assert(spaxel=="circle" or spaxel=="square","spaxel is either a circle or a square!")
     V = self.vignetting.host().flatten()==1
@@ -248,13 +250,17 @@ def ee80(self,spaxel="circle"):
         f = lambda x: ensquared(x)-0.8
 	b = np.maximum(x.max(),y.max())
     try:
-        return 2*brentq(f,0,b)*(ARCSEC2RAD/1e-3)
+        return 2*brentq(f,0,b)
     except ValueError:
         return np.float('inf')
 
 property N_BUNDLE:
     def __get__(self):
         return self._c_bundle.N_BUNDLE
+
+property N_L:
+    def __get__(self):
+        return self._c_bundle.N_L
 
 property coordinates:
     def __get__(self):
@@ -343,7 +349,9 @@ property L:
 	void finite_difference(float *, float *, int, float);
         void finite_difference(float *, float *, int, float, mask *);
         void gradient_average(float *, float *, int , float)
+        void gradient_average(float *, float *, float)
         void segments_gradient_average(float *, float * , float, int *)
+        void segments_gradient_averageFast(float *, float * , float, int *)
 @
 \subsubsection{Class definition}
 \label{sec:class-definition-1}
@@ -360,6 +368,7 @@ cdef class Complex_amplitude:
 
 <<source.pyx>>=
 import numpy as np
+cimport numpy as np
 cimport cython
 
 @cython.boundscheck(False)
@@ -445,6 +454,31 @@ cdef class Complex_amplitude:
         else:
             self._c_complex_amplitude.reset_phase(wavefront._c_complex_amplitude)
 
+    def addPhase(self, cuFloatArray phase):
+        self._c_complex_amplitude.add_phase(1,phase._c_gpu.dev_data)        
+
+    def __iadd__(self, x):
+        cdef cuFloatArray data
+        if isinstance(x,(np.ndarray,list,tuple,float)):
+            data  = cuFloatArray(host_data=x)
+        if isinstance(x,cuDoubleArray):
+            data = x.__single__()
+        if isinstance(x,cuFloatArray):
+            data = x
+        self._c_complex_amplitude.add_phase(1,data._c_gpu.dev_data)        
+        return self
+
+    def __isub__(self, x):
+        cdef cuFloatArray data
+        if isinstance(x,(np.ndarray,list,tuple,float)):
+            data  = cuFloatArray(host_data=x)
+        if isinstance(x,cuDoubleArray):
+            data = x.__single__()
+        if isinstance(x,cuFloatArray):
+            data = x
+        self._c_complex_amplitude.add_phase(-1,data._c_gpu.dev_data)        
+        return self
+
     def finiteDifference(self, int NL, float d, MaskAbstract M=None):
         """
         Computes the average finite difference of the wavefront
@@ -475,7 +509,7 @@ cdef class Complex_amplitude:
                                                         NL, d, M._c_mask)        
         return sxy
 
-    def gradientAverage(self, int NL, float d):
+    def gradientAverage(self, int NL=1, float d=1.0):
         """
         Computes the average finite difference of the wavefront
 
@@ -491,12 +525,39 @@ cdef class Complex_amplitude:
         cuFloatArray
             The wavefront gradient average in an array of size [N_SRCxNLx2,NL]
         """
-        cdef cuFloatArray sxy
-        sxy = cuFloatArray(shape=(self._c_complex_amplitude.N*NL*2,NL), dev_malloc=True)
-        self._c_complex_amplitude.gradient_average(sxy._c_gpu.dev_data, 
-                                                   sxy._c_gpu.dev_data + NL*NL, 
-                                                   NL, d)
-        return sxy
+
+        cdef cuFloatArray gsxy
+        cdef float[:] sxy
+        if NL>1:
+            gsxy = cuFloatArray(shape=(self._c_complex_amplitude.N*NL*2,NL), dev_malloc=True)
+            self._c_complex_amplitude.gradient_average(gsxy._c_gpu.dev_data, 
+                                                       gsxy._c_gpu.dev_data + NL*NL, 
+                                                       NL, d)
+            return gsxy
+        else:
+            sxy = np.zeros(2*self._c_complex_amplitude.N,dtype=np.single)
+            self._c_complex_amplitude.gradient_average(&sxy[0], &sxy[self._c_complex_amplitude.N],  d)
+            return np.asarray(sxy)
+            
+
+    def gradientAverageFast(self, float d):
+        """
+        Computes the average finite difference of the wavefront
+
+        Parameters
+        ----------
+        d : float
+            The lenslet pitch
+
+        Returns
+        -------
+        cuFloatArray
+            The wavefront gradient average in an array of size [N_SRCx2,1]
+        """
+        cdef float[:] sxy
+        sxy = np.zeros(2*self._c_complex_amplitude.N,dtype=np.single)
+        self._c_complex_amplitude.gradient_average(&sxy[0], &sxy[self._c_complex_amplitude.N],  d)
+        return np.asarray(sxy)
 @
 \section{Source}
 \label{sec:source}
@@ -517,30 +578,40 @@ cdef class Complex_amplitude:
 	void setup(const char *,float , float , float , int )
         void setup(const char *,float *, float *, float , int , int )
         void setup(const char *,float *, float *, float , int , rtd, int, vector)
+        #void setup(const char *,float *,float *, float *, float , int , rtd, int, vector)
+        void setup(const char *,float *,double *, double *, float , int , rtd, int, vector)
         void cleanup()
         void reset_rays()
         void opd2phase()
         void info()
         float n_photon()
+        float n_photon(float)
+        float n_background_photon(float)
         float wavelength()
         float spectral_bandwidth()
-        void update_directions(float *, float *, int)
+        void update_directions(double *, double *, int)
+        void update_magnitude(float *, int)
 @
 \subsubsection{Class definition}
 \label{sec:class-definition-2}
 
 <<class definitions>>=
+from cpython.object cimport Py_GT
 cdef class Source:
     cdef:
         source *_c_source
         readonly int N_SRC
         readonly int n, m
         readonly int size
-        float[:] _zenith_, _azimuth_
+        double[:] _zenith_, _azimuth_
+        float[:] _magnitude_
         readonly float height
         readonly Bundle rays
         readonly Complex_amplitude wavefront
         readonly sphere_distance
+        readonly tuple OPTICALPATH
+        public double samplingTime, timeStamp
+        public dict parameters
 @
 \subsection{PYX file}
 \label{sec:pyx-file-2}
@@ -570,6 +641,8 @@ cdef class Source:
         The linear sampling of the ray bundle
     rays_origin : list, optional
          A 3 element list, with the first 2 being the (x,y) origin of the ray bundle and the 3rd the ray bundle starting z coordinates
+    samplingTime : double
+        the source propagation sampling time; default: 1s
 
     Attributes
     ----------
@@ -605,6 +678,14 @@ cdef class Source:
         the wavefront complex amplitude
     sphere_distance : float
         the distance to the reference sphere used to compute the OPD
+    OPTICALPATH : tuple (readonly)
+        the source optical path
+    samplingTime : double
+        the source propagation sampling time; default: 1s
+    timeStamp : double
+        the time associated with the current propagation, the "samplingTime" is added to "timeStamp" after each call to the unary + operator
+    parameters : dict
+        the object parameters in a dictionary
 
     Examples
     --------
@@ -640,6 +721,7 @@ cdef class Source:
 
     def __cinit__(self, *args, **kwargs):
         self._c_source = new source()
+        self.parameters = {'args':args,'kwargs':kwargs}
 
     def __init__(self,char *photometric_band,
                  zenith=0, azimuth=0,
@@ -649,44 +731,106 @@ cdef class Source:
                  fwhm = None,
                  rays_box_size=None,
                  rays_box_sampling=None,
-                 rays_origin=None):
+                 rays_origin=None,
+                 samplingTime = 1.0 ):
 
+        cdef float[:] z,a
         if rays_box_sampling is not None:
             resolution = [rays_box_sampling, rays_box_sampling]
         self.n = resolution[0]
         self.m = resolution[1]
-        self._zenith_  = np.array( zenith,  dtype=np.float32, ndmin=1)
-        self._azimuth_ = np.array( azimuth, dtype=np.float32, ndmin=1)
+        self._zenith_  = np.array( zenith,  dtype=np.float64, ndmin=1)
+        self._azimuth_ = np.array( azimuth, dtype=np.float64, ndmin=1)
+        if magnitude is None:
+            self._magnitude_ = np.zeros_like( self._zenith_ , dtype=np.float32)
+        else:
+            self._magnitude_ = np.array( magnitude, dtype=np.float32, ndmin=1)
         self.height  = float(height);
         self.size = self._zenith_.size
         cdef vector _origin_
         if rays_box_size is None:
+            z = np.array( zenith,  dtype=np.float32, ndmin=1)
+            a = np.array( azimuth, dtype=np.float32, ndmin=1)
             self._c_source.setup(photometric_band,
-                                 &self._zenith_[0],
-                                 &self._azimuth_[0], height,
+                                 &z[0],&a[0], height,
                                  self.size, np.prod(resolution))
         else:
             _origin_.x = <float>rays_origin[0]
             _origin_.y = <float>rays_origin[1]
             _origin_.z = <float>rays_origin[2]
             self._c_source.setup(photometric_band,
+                                 &self._magnitude_[0],
                                  &self._zenith_[0],
                                  &self._azimuth_[0], height,
                                  self.size,
                                  rays_box_size,
 				 rays_box_sampling,
 				 _origin_)
-        if magnitude is not None:
-            self._c_source.magnitude = magnitude
+        #if magnitude is not None:
+        #    self._c_source.magnitude = magnitude
         if fwhm is not None:
             self._c_source.fwhm = fwhm
         self.wavefront = Complex_amplitude(self)
         self.rays = Bundle(self)
         self.N_SRC = self._c_source.N_SRC
         self.sphere_distance = None
+        self.samplingTime = samplingTime
+        self.timeStamp = 0.0
 
     def __dealloc__(self):
         self._c_source.cleanup()
+
+    def __rshift__(Source x, tuple y):
+        """
+        Set the optical path
+
+        Parameters
+        ----------
+        x : Source
+            The Source object
+        y : tuple
+            A list of CEO object the source is propagating through
+        """
+        x.OPTICALPATH = y
+        print "OPTICAL PATH: "+str(map(lambda z: z.__class__.__name__,x.OPTICALPATH))
+
+    def __richcmp__(Source x, tuple y, int op):
+        """
+        Append to the optical path
+
+        Parameters
+        ----------
+        x : Source
+            The Source object
+        y : tuple
+            A list of CEO object the source is propagating through
+        """
+        if op==Py_GT:
+            x.OPTICALPATH = x.OPTICALPATH + y
+            print "OPTICAL PATH: "+str(map(lambda z: z.__class__.__name__,x.OPTICALPATH))
+        else:
+            assert False
+
+    def __invert__(self):
+        """
+        Reset the source
+        """
+        self.reset()
+
+    def __pos__(self):
+        """
+        Reset the source and propagate the source through the optical path
+        """
+        assert self.OPTICALPATH is not None, "OPTICALPATH is not set!"
+        self.reset()
+        map(lambda x: x.propagate(self), self.OPTICALPATH)
+        self.timeStamp += self.samplingTime
+
+    def __iadd__(self, int x):
+        cdef int k
+        for k in range(x):
+            self.__pos__()
+        return self
 
     def opd2phase(self):
         """
@@ -694,20 +838,23 @@ cdef class Source:
         """
         self._c_source.opd2phase()
 
-    def updateDirections(self, float[:] zenith, float[:] azimuth):
+    def updateDirections(self, zenith, azimuth):
         """
         Update the zenith and azimuth direction angles
 
         Parameters
         ----------
-        zenith : float[:]
+        zenith : float, tuple, list or numpy array
             The zenith angle array in radian
-        azimuth : float[:]
+        azimuth : float, tuple, list or numpy array
             The azimuth angle array in radian
         """
-        self._zenith_ = zenith
-        self._azimuth_ = azimuth
-        self._c_source.update_directions(&zenith[0],&azimuth[0],zenith.size)
+        self._zenith_  = np.array(zenith ,dtype=np.float64,ndmin=1)
+        self._azimuth_ = np.array(azimuth,dtype=np.float64,ndmin=1)
+        self._c_source.update_directions(&(self._zenith_[0]),&(self._azimuth_[0]),self.N_SRC)
+        
+    def nBackgroundPhoton(self, float backgroundMagnitude):
+        return self._c_source.n_background_photon(backgroundMagnitude)
 
     property phase:
         def __get__(self):
@@ -733,11 +880,11 @@ cdef class Source:
 
     property nPhoton:
         def __get__(self):
-            return self._c_source.n_photon()
-
-    property magnitude:
-        def __set__(self,value):
-            self._c_source.magnitude = value
+            cdef int k
+            NPH = np.zeros(self._magnitude_.size)
+            for k in range(self._magnitude_.size):
+                NPH[k] = self._c_source.n_photon(self._magnitude_[k])
+            return NPH
     
     property zenith:
         def __get__(self):
@@ -747,6 +894,13 @@ cdef class Source:
         def __get__(self):
             return np.asarray(self._azimuth_)     
     
+    property magnitude:
+        def __get__(self):
+            return np.asarray(self._magnitude_)     
+        def __set__(self, list magnitude):
+            self._magnitude_ = np.array(magnitude,dtype=np.float32,ndmin=1)
+            self._c_source.update_magnitude(&(self._magnitude_[0]), self._magnitude_.size)
+
     property theta_x:
         def __get__(self):
             return np.tan(self._zenith_)*np.cos(self._azimuth_)
@@ -754,6 +908,12 @@ cdef class Source:
     property theta_y:
         def __get__(self):
             return np.tan(self._zenith_)*np.sin(self._azimuth_)
+
+    property fwhm:
+        def __get__(self):
+            return self._c_source.fwhm
+        def __set__(self,float value):
+            self._c_source.fwhm = value
 
     def masked(self, MaskAbstract tel):
         """
@@ -777,6 +937,12 @@ cdef class Source:
         Reset the wavefront amplitude to 1 and phase to 0 and re--initialize the ray bundle
         """
         self._c_source.wavefront.reset()
+        self._c_source.reset_rays()
+
+    def resetRays(self):
+        """
+        Re--initialize the ray bundle
+        """
         self._c_source.reset_rays()
 
     def piston(self, where='pupil',int units_exponent=0):
@@ -866,21 +1032,14 @@ cdef class Source:
                     rms[k,s] = np.std(phase[k,Q[s,:]])
         return np.array(rms)*10**-units_exponent
 
-    def segmentsWavefrontGradient(self):
+    def segmentsWavefrontGradientSlow(self):
         """
-        Computes the average finite difference of the wavefront
-
-        Parameters
-        ----------
-        NL : int
-            The linear size of the lenslet array
-        d : float
-            The lenslet pitch
+        Computes the average angle of arrival (tip and tilt) of each segment
 
         Returns
         -------
         cuFloatArray
-            The wavefront gradient average in an array of size [N_SRCxNLx2,NL]
+            The average angle of arrival of each segment in an array of size [N_SRCx7x2,1] as [cx,cy]
         """
         cdef cuFloatArray sxy
         sxy = cuFloatArray( host_data=np.zeros((7*self.N_SRC*2,1) ) )
@@ -889,7 +1048,28 @@ cdef class Source:
                                                           self._c_source.rays.L,
                                                           self._c_source.rays.d__piston_mask)
         return sxy
+
+    def segmentsWavefrontGradient(self):
+        """
+        Computes the average angle of arrival (tip and tilt) of each segment
+
+        Returns
+        -------
+        cuFloatArray
+            The average angle of arrival of each segment in an array of size [N_SRCx7x2,1] as [cx,cy]
+        """
+        cdef float[:,:] sxy
+        sxy = np.zeros((2*self.N_SRC*7,1),dtype=np.single)
+        self._c_source.wavefront.segments_gradient_averageFast(&sxy[0,0], &sxy[7*self.N_SRC,0],
+                                                               self._c_source.rays.L,
+                                                               self._c_source.rays.d__piston_mask)
+        return np.asarray(sxy)
 @
+
+\subsubsection{JSource}
+\label{sec:jsource}
+
+
 \index{source!python!JSource}
 <<source.pyx>>=
 from utilities import JSONAbstract

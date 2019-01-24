@@ -13,12 +13,18 @@ cdef extern from "shackHartmann.h":
         <<common extern declaration>>
         imaging camera
         void setup(int , int, float , int , int , int, int)
-        void propagate(source *)
-        void process()
 	float* get_frame_dev_ptr()
+        void update_lenslet(float *)
+    cdef cppclass tt7:
+        <<common extern declaration>>
+        imaging camera
+        void setup(int , int, float , int , int , int, int)
+	float* get_frame_dev_ptr()
+        void update_lenslet(float *)
     cdef cppclass geometricShackHartmann:
         <<common extern declaration>>
         void setup(int , float , int)
+        void reset()
 <<class definitions>>
 @ where
 <<common extern declaration>>=
@@ -32,6 +38,8 @@ void cleanup()
 void identify_valid_lenslet(source *, float);
 void set_reference_slopes(source *);
 void calibrate(source *, float )
+void propagate(source *)
+void process()
 void analyze(source *)
 void get_valid_slopes(float *)
 void get_valid_reference_slopes(float *)
@@ -42,22 +50,33 @@ void get_valid_slopes_norm(float *)
 
 \index{shackHartmann!python!ShackHartmann}
 <<class definitions>>=
-from utilities cimport cuFloatArray, MaskAbstract
+from utilities cimport Sensor, cuFloatArray, MaskAbstract
 from imaging cimport Imaging
 from centroiding cimport Centroiding
-cdef class ShackHartmann:
+from source cimport Source
+cdef class ShackHartmann(Sensor):
     cdef:
         shackHartmann *_c_shackHartmann
-        readonly int N_GS
-        readonly MaskAbstract valid_lenslet, valid_actuator
-        readonly cuFloatArray c0
-        readonly Imaging camera
-        readonly Centroiding data_proc
-	cuFloatArray _valid_slopes_, _valid_reference_slopes_
+        <<shackHartmann class definitions>>
+@ with
+<<shackHartmann class definitions>>=
+readonly int N_GS
+readonly MaskAbstract valid_lenslet, valid_actuator
+readonly cuFloatArray c0
+readonly Imaging camera
+readonly Centroiding data_proc
+cuFloatArray _valid_slopes_, _valid_reference_slopes_
+@
+\index{shackHartmann!python!TT7}
+<<class definitions>>=
+cdef class TT7Sensor(Sensor):
+    cdef:
+        tt7 *_c_shackHartmann
+        <<shackHartmann class definitions>>
 @
 \index{shackHartmann!python!GeometricShackHartmann}
 <<class definitions>>=
-cdef class GeometricShackHartmann:
+cdef class GeometricShackHartmann(Sensor):
     cdef:
         geometricShackHartmann *_c_shackHartmann
         readonly int N_SIDE_LENSLET
@@ -66,6 +85,7 @@ cdef class GeometricShackHartmann:
         readonly cuFloatArray c0
         readonly Centroiding data_proc
 	cuFloatArray _valid_slopes_, _valid_reference_slopes_
+        Source GS
 @
 \section{PYX file}
 \label{sec:pyx-file}
@@ -75,8 +95,6 @@ cdef class GeometricShackHartmann:
 
 <<shackHartmann.pyx>>=
 from libc.math cimport M_PI
-from utilities cimport cuFloatArray, MaskAbstract
-from source cimport Source
 cdef class ShackHartmann:
     """
     Creates a shackHartmann object.
@@ -97,6 +115,16 @@ cdef class ShackHartmann:
        The binning factor of the imagelet, default to 1
     N_GS : int, optional
        The number of guide stars, defaults to 1
+    photoelectron_gain : float
+        The photon to electron conversion gain of the camera; default: 1
+    exposureTime : float
+       The detector exposure time in second; default: 1s
+    readOutNoiseRms : float
+       The detector read-out noise rms; default: 0
+    nBackgroundPhoton : float
+       The number of background photon; default: 0
+    noiseFactor : float
+       The excess noise factor; default: 1
 
     Attributes
     ----------
@@ -181,9 +209,15 @@ cdef class ShackHartmann:
     def __cinit__(self, *args, **kwargs):
         self._c_shackHartmann = new shackHartmann()
 
+<<shackHartmann contents>>
+@ 
+<<shackHartmann contents>>=
     def __init__(self, int N_SIDE_LENSLET=0, int N_PX_LENSLET=0, float d=0.0,
-	          DFT_osf=2, N_PX_IMAGE=None, BIN_IMAGE=1, N_GS=1):
-        if N_PX_IMAGE is None:
+                 int DFT_osf=2, int N_PX_IMAGE=0, int BIN_IMAGE=1, int N_GS=1,
+                 float exposureTime=1.0, float readOutNoiseRms=0.0, 
+                 float nBackgroundPhoton=0.0, float noiseFactor=1.0,
+                 float photoElectronGain=1.0, **kwargs):
+        if N_PX_IMAGE==0:
             N_PX_IMAGE = N_PX_LENSLET;
         self.N_GS           = N_GS
         self._c_shackHartmann.setup(N_SIDE_LENSLET, N_PX_LENSLET, d,
@@ -191,9 +225,53 @@ cdef class ShackHartmann:
 
         self.camera = Imaging(N_SIDE_LENSLET, N_PX_LENSLET,
                               DFT_osf=DFT_osf,N_PX_IMAGE=N_PX_IMAGE,
-                              BIN_IMAGE=BIN_IMAGE,N_SOURCE=N_GS,wfs=self)
-        self.data_proc = Centroiding(N_SIDE_LENSLET,wfs=self)
+                              BIN_IMAGE=BIN_IMAGE,N_SOURCE=N_GS,
+                              exposureTime=exposureTime, readOutNoiseRms=readOutNoiseRms,
+                              nBackgroundPhoton=nBackgroundPhoton, noiseFactor=noiseFactor,
+                              photoElectronGain=photoElectronGain, isPtr=1)
+        self.camera.set_ptr( &(self._c_shackHartmann.camera) )
+        self.camera.photoelectron_gain = photoElectronGain
+
+        self.data_proc = Centroiding(N_SIDE_LENSLET, N_SOURCE=self.N_GS, isPtr=1)
+        self.data_proc.set_ptr( &(self._c_shackHartmann.data_proc) )
+
         <<shackHartmann cython init>>
+
+    def __invert__(self):
+        """
+        Reset the sensor
+        """
+        self._c_shackHartmann.camera.reset()
+
+    def __pos__(self):
+        """
+        Read-out and reset the detector and process the frame
+        """
+        self._c_shackHartmann.camera.readout(self.camera.exposureTime,
+                                             self.camera.readOutNoiseRms,
+                                             self.camera.nBackgroundPhoton,
+                                             self.camera.noiseFactor)
+        self.process()
+        self.reset()
+
+    def __neg__(self):
+        """
+        Computes the centroids
+        """
+        self.process()
+
+    def guide_star(self, char *photometric_band="V",tuple zenith=(0,), tuple azimuth=(0,),
+                   tuple magnitude=(0,), float height=float("inf"), float fhwm=0):
+        pass
+
+    def update_lenslet(self, filt):
+        cdef cuFloatArray F
+        F = cuFloatArray(host_data=filt)
+        self._c_shackHartmann.update_lenslet(F._c_gpu.dev_data)
+        self._valid_slopes_ = cuFloatArray(shape=(1,self._c_shackHartmann.valid_lenslet.nnz*2),
+                                           dev_malloc=True)
+        self._valid_reference_slopes_ = cuFloatArray(shape=(1,self._c_shackHartmann.valid_lenslet.nnz*2),
+                                           dev_malloc=True)
 
 <<shackHartmann cython methods>>
 
@@ -201,30 +279,10 @@ cdef class ShackHartmann:
         """
         Resets the WFS detector frame to 0
         """
-        self._c_shackHartmann.camera.reset()
+        self.camera.reset()
 
-    def propagate(self, Source gs):
-        """
-        Propagates the guide star to the WFS detector (noiseless)
-
-        Parameters
-        ----------
-        gs : Source
-            The WFS guide star
-
-        See also
-        --------
-        Source : a class for astronomical sources
-        """
-        self._c_shackHartmann.propagate(gs._c_source)
-
-    def process(self):
-        """
-        Processes the WFS detector frame
-        """
-        self._c_shackHartmann.process()
-
-    def readOut(self,float exposureTime, float readOutNoiseRms):
+    def readOut(self,float exposureTime, float readOutNoiseRms, 
+                float nBackgroundPhoton=0.0, float noiseFactor=1.0):
         """
         Reads-out the WFS detector frame adding photon and read-out noises
 
@@ -235,9 +293,10 @@ cdef class ShackHartmann:
         readoutNoiseRms : float
             The rms of the detector read-out noise
         """
-        self._c_shackHartmann.camera.readout(exposureTime,readOutNoiseRms)
+        self._c_shackHartmann.camera.readout(exposureTime,readOutNoiseRms,
+                                             nBackgroundPhoton, noiseFactor)
 
-    def pointing(self,float zen, float azim):
+    def pointing(self,float[:] zen, float[:] azim):
         """
         Sets the pointing of the WFS relative to the guide star
 
@@ -248,7 +307,8 @@ cdef class ShackHartmann:
         azim : float
             The azimuth angle [rd]
         """
-        self._c_shackHartmann.camera.set_pointing_direction(zen, azim)
+        self._c_shackHartmann.camera.absolute_pointing = 1
+        self._c_shackHartmann.camera.set_pointing_direction(&zen[0], &azim[0])
 
 <<shackHartmann cython properties>>
 
@@ -312,12 +372,39 @@ self.c0 = cuFloatArray(shape=(self.N_GS,(self.N_SIDE_LENSLET**2)*2))
 self.c0._c_gpu.dev_data = self._c_shackHartmann.d__c0
 @ and
 <<shackHartmann cython methods>>=
+    def __neg__(self):
+        """
+        Computes the centroids
+        """
+        self.process()
+
+    def propagate(self, Source gs):
+        """
+        Propagates the guide star to the WFS detector (noiseless)
+
+        Parameters
+        ----------
+        gs : Source
+            The WFS guide star
+
+        See also
+        --------
+        Source : a class for astronomical sources
+        """
+        self._c_shackHartmann.propagate(gs._c_source)
+
+    def process(self):
+        """
+        Processes the WFS detector frame
+        """
+        self._c_shackHartmann.process()
+
     def __dealloc__(self):
         self._c_shackHartmann.cleanup()
 
     def identifyValidLenslet(self, Source gs, float threshold):
         """
-        Selects the WFS valid lenslet and calibrated the reference slopes
+        Selects the WFS valid lenslet
 
         Parameters
         ----------
@@ -338,7 +425,7 @@ self.c0._c_gpu.dev_data = self._c_shackHartmann.d__c0
 
     def setReferenceSlopes(self, Source gs):
         """
-        Selects the WFS valid lenslet and calibrated the reference slopes
+        Sets the reference slopes
 
         Parameters
         ----------
@@ -372,7 +459,7 @@ self.c0._c_gpu.dev_data = self._c_shackHartmann.d__c0
         self._valid_reference_slopes_ = cuFloatArray(shape=(1,self._c_shackHartmann.valid_lenslet.nnz*2),
                                            dev_malloc=True)
 
-    def analyze(self, Source gs):
+    def analyze(self, Source gs, **kwargs):
         """
         Propagates the guide star to the WFS detector (noiseless) and processes the frame
 
@@ -393,6 +480,18 @@ self.c0._c_gpu.dev_data = self._c_shackHartmann.d__c0
                           dev_malloc=True)
         self._c_shackHartmann.get_valid_slopes_norm(sn._c_gpu.dev_data)
         return sn
+
+    def get_measurement(self):
+        """
+        Returns the measurement vector
+        """
+        return self.valid_slopes.host().ravel()
+
+    def get_measurement_size(self):
+        """
+        Returns the size of the measurement vector
+        """
+        return self.n_valid_slopes
 
 <<shackHartmann cython properties>>=
     property valid_reference_slopes:
@@ -416,43 +515,76 @@ self.c0._c_gpu.dev_data = self._c_shackHartmann.d__c0
     property c:
         def __get__(self):
             return self.data_proc.c
+
+    property data:
+        def __get__(self):
+            return self.valid_slopes.host().ravel()
+
+    property Data:
+        def __get__(self):
+            return self.valid_slopes.host(shape=(self.n_valid_slopes,1))
 @
+
+\subsection{TT7}
+\label{sec:tt7}
+
+<<shackHartmann.pyx>>=
+cdef class TT7Sensor(Sensor):
+    def __cinit__(self, *args, **kwargs):
+        self._c_shackHartmann = new tt7()
+
+<<shackHartmann contents>>
+
+cdef class TT7(TT7Sensor):
+    def __init__(self, **kwargs):
+        super(TT7,self).__init__(N_SIDE_LENSLET=1,N_GS=7,**kwargs)
+@
+
 \subsection{GeometricShackHartmann}
 \label{sec:geom}
 
 <<shackHartmann.pyx>>=
-cdef class GeometricShackHartmann:
+cdef class GeometricShackHartmann(Sensor):
 
     def __cinit__(self, *args, **kwargs):
         self._c_shackHartmann = new geometricShackHartmann()
 
-    def __init__(self, int N_SIDE_LENSLET, float d, N_GS=1):
+    def __init__(self, int N_SIDE_LENSLET, float d, N_GS=1, **kwargs):
         self.N_SIDE_LENSLET = N_SIDE_LENSLET
         self.N_GS           = N_GS
         self._c_shackHartmann.setup(N_SIDE_LENSLET, d, N_GS)
 
-        self.data_proc = Centroiding(N_SIDE_LENSLET,gwfs=self)
+        self.data_proc = Centroiding(N_SIDE_LENSLET, N_SOURCE=self.N_GS, isPtr=1)
+        self.data_proc.set_ptr( &(self._c_shackHartmann.data_proc) )
         <<shackHartmann cython init>>
         
-    def propagate(self, Source gs):
-        self._c_shackHartmann.analyze(gs._c_source)
-
-    def process(self):
-        pass
-
     def readOut(self, float T, float ron):
         pass
+
+    def __pos__(self):
+        """
+        Reset the detector and process the frame
+        """
+        self.process()
+        self.reset()
+
+    def __invert__(self):
+        """
+        Reset the sensor
+        """
+        self._c_shackHartmann.reset()
 
 <<shackHartmann cython methods>>
 
     def reset(self):
-        pass
+        self._c_shackHartmann.reset()
 
 <<shackHartmann cython properties>>
 @
 \subsection{JShackHartmann}
 \label{sec:jshackhartmann}
 
+\index{shackHartmann!python!JShackHartmann}
 <<shackHartmann.pyx>>=
 from utilities import JSONAbstract
 class JShackHartmann(JSONAbstract,ShackHartmann):
