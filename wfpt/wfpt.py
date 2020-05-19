@@ -128,7 +128,7 @@ def OAP( wfsize=1000, PVperoptic=633/10., PSDslope=1.6, seed=0):
     # Phase screen relays
     # PTT relays
     # DM relays
-    for beam_diam in [22, 26, 19]:
+    for beam_diam in [44, 52, 38]:
         oaps.addoptic(2, rmsperoptic * dn, 1, PSDslope,  1. / beam_diam)  
         oaps.addoptic(2, rmsperoptic * dn, 1, PSDslope, -1. / beam_diam) 
     return oaps 
@@ -143,7 +143,7 @@ def Refractive( wfsize=1000, PVperoptic=633/10., PSDslope=2, seed=0):
     # Phase screen relays
     # PTT relays
     # DM relays
-    for beam_diam in [22, 26, 19]:
+    for beam_diam in [44, 52, 38]:
         refr.addoptic(2 * 6, rmsperoptic * dn, 1, PSDslope,  1. / beam_diam)  
         refr.addoptic(2 * 6, rmsperoptic * dn, 1, PSDslope, -1. / beam_diam) 
     return refr
