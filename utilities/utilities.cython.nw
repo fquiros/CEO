@@ -466,12 +466,13 @@ cdef extern from "utilities.h":
 # cuFloatArray
 from operator import mul
 from numpy cimport ndarray, dtype
+from libc.stdint cimport intptr_t
 cdef class cuFloatArray:
     cdef gpu_t[float] *_c_gpu
     <<cu array definitions>>
 @ 
 <<cu array definitions>>=
-cdef dtype type
+cdef public dtype type
 cdef public int size
 cdef public shape
 cdef public order
@@ -557,6 +558,24 @@ def host(self,units=None,zm=False,mask=None,shape=None, order=None):
 
 def reset(self):
     self._c_gpu.reset()
+
+@property
+def dev_ptr(self):
+    cdef intptr_t a
+    a = <intptr_t> self._c_gpu.dev_data
+    return a
+
+@property
+def nbytes(self):
+    cdef size_t nb
+    nb = sizeof(self.type)*self._c_gpu.N
+    return nb
+
+def __repr__(self):
+    repr(self.host())
+
+def __str__(self):
+    str(self.host())
 @
 <<cu array host>>=
 <<cu array method doc>>
@@ -893,6 +912,74 @@ cpdef wavefrontFiniteDifference(cuFloatArray sx, cuFloatArray sy, int NL,
     else:
         wavefront_finite_difference(sx._c_gpu.dev_data, sy._c_gpu.dev_data, NL, 
                                     phi._c_gpu.dev_data, n, d, M._c_mask, N_GS)
+@
+
+\subsection{Special functions}
+\label{sec:spec_fun}
+
+\subsubsection{Irregular Modified Bessel Functions}
+\label{sec:irreg_modif_bessel}
+
+
+\index{utilities!python!Knu}
+<<utilities.pxd>>=
+    double _K_nu_(double, double)
+@
+<<utilities.pyx>>=
+cpdef double Knu(double nu, double x):
+   return _K_nu_(nu,x)
+@
+
+\section{Geometry}
+\label{sec:geometry-1}
+
+\index{utilities!python!polywind}
+The cython wrapper for the routine that computes the winding number of a polygon
+(Sec.~\ref{sec:geometry}) is
+<<utilities.pxd>>=
+## polygon winding number
+    int polywind(double Px, double Py, double *Vx, double *Vy, int NV)
+    void polywinds(int *W, double *Px, double *Py, int NP, double *Vx, double *Vy, int NV)
+@
+<<utilities.pyx>>=
+## polygon winding number
+cpdef polyWind(double Px, double Py, double[:] Vx, double[:] Vy):
+    """
+    Computes the winding number of a polygon around a point P
+    Parameters
+    ----------
+    Px : double
+        The x coordinates of the point 
+    Py : double
+        The y coordinates of the point 
+    Vx : ndarray
+        The x coordinate array of the polygon vertices 
+    Vy : ndarray
+        The y coordinate array of the polygon vertices 
+    """
+    return polywind(Px, Py, &Vx[0], &Vy[0], Vx.size)
+cpdef polyWinds(cuDoubleArray Px, cuDoubleArray Py, cuDoubleArray Vx, cuDoubleArray Vy):
+    """
+    Computes the winding numbers of a polygon around a array of points P
+    Parameters
+    ----------
+    Px : cuDoubleArray
+        The x coordinate array of the points
+    Py : cuDoubleArray
+        The y coordinate array of the points 
+    Vx : cuDoubleArray
+        The x coordinate array of the polygon vertices 
+    Vy : cuDoubleArray
+        The y coordinate array of the polygon vertices 
+    """
+    cdef cuIntArray W
+    cdef int NP, NV
+    NP = Px.size
+    NV = Vx.size
+    W = cuIntArray(shape=Px.shape, dev_malloc=True)
+    polywinds(W._c_gpu.dev_data, Px._c_gpu.dev_data, Py._c_gpu.dev_data, NP,
+              Vx._c_gpu.dev_data, Vy._c_gpu.dev_data, NV)
+    return W
 @
 \section{Sparse matrix}
 \label{sec:sparse-matrix-1}

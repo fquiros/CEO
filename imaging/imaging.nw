@@ -44,14 +44,18 @@ struct imaging {
   void reset_rng(int SEED);
 
   void propagate(source *src);
+  void propagate_cpx(source *src);
   void propagateNoOverlap(source *src);
   void propagateNoOverlapBare(source *src);
   void propagateNoOverlapSPS(source *src, float d, float wavenumber);
   void propagateTT7(source *src);
   void propagateTT7(source *src, int *d__piston_mask);
   void propagateThroughFieldStop(source *src, float field_stop_diam);
-  void propagateThroughPyramid(source *src);
-  void propagateThroughModulatedPyramid(source *src, float modulation);
+  void propagateThroughPyramid(source *src, float alpha);
+  void propagateThroughModulatedPyramid(source *src,
+                                        float modulation,
+                                        int modulation_sampling,
+                                        float alpha);
 
   void readout(float exposureTime, float readOutNoiseRms);
   void noiseless_readout(float exposureTime);
@@ -341,6 +345,25 @@ void imaging::cleanupSegmentPistonSensor(void) {
 \subsection{Propagation}
 \label{sec:propagation}
 
+<<propagation>>=
+void imaging::propagate_cpx(source *src) {
+  int M = N_PX_IMAGE/N_PX_CAMERA;
+  dim3 gridDim;
+  dim3 blockDim(16,16);
+  gridDim  = dim3(1+N_DFT*N_SIDE_LENSLET/16,1+N_DFT*N_SIDE_LENSLET/16,N_SOURCE);
+  complexAmplitude LLL gridDim , blockDim RRR(d__wave_PUPIL, N_DFT,
+                                              src->wavefront.amplitude,
+                                              src->wavefront.phase,
+                                              src->wavenumber(),
+                                              N_PX_PUPIL, N_PX_IMAGE, M,
+                                              N_SIDE_LENSLET, src->dev_ptr,
+                                              pixel_scale, d__theta_x, d__theta_y,
+                                              absolute_pointing,1);
+
+  HANDLE_ERROR_CUFFT( cufftExecC2C(plan, d__wave_PUPIL, d__wave_PUPIL, CUFFT_FORWARD),
+                      "Unable to execute plan forward FT");
+}
+@
 As we are considering only the case of imaging sources at infinity, the wavefront propagation is performed with the Fraunhofer approximation meaning that the image in the focal plane is simply the Fourier transform of the complex amplitude in the pupil plane.
 The propagation is computing with a call to either the [[propagate]] routine:
 \index{imaging!imaging!propagate}
@@ -349,29 +372,33 @@ void imaging::propagate(source *src) {
   int M = N_PX_IMAGE/N_PX_CAMERA;
   /* if ( (pixel_scale>0) && (zenith<0) ) */
   /*   set_pointing_direction(0.0,0.0); */
+
   /*
   if (pixel_scale>0 ) {
+      pixel_scale /= BIN_IMAGE;
       printf(" pixel scale: %.2E\n",pixel_scale);
-  float dx, dy, dx_int, dy_int;
-  <<angular offset>>
-  printf("ANGULAR OFFSET:\n");
-  printf(" . x: %3.0f + %4.3f\n",dx_int,dx);
-  printf(" . y: %3.0f + %4.3f\n",dy_int,dy);
+      float dx, dy, dx_int, dy_int;
+      int iSource=0;
+      <<angular offset>>
+      printf("ANGULAR OFFSET:\n");
+      printf(" . x: %3.0f + %4.3f\n",dx_int,dx);
+      printf(" . y: %3.0f + %4.3f\n",dy_int,dy);
     }
   */
+
   //absolute_pointing = 1;
   //fprintf(stdout,"Absolute pointing: %d\n",absolute_pointing);
   dim3 gridDim;
   dim3 blockDim(16,16);
   gridDim  = dim3(1+N_DFT*N_SIDE_LENSLET/16,1+N_DFT*N_SIDE_LENSLET/16,N_SOURCE);
   complexAmplitude LLL gridDim , blockDim RRR(d__wave_PUPIL, N_DFT,
-					      src->wavefront.amplitude,
-					      src->wavefront.phase,
+                                              src->wavefront.amplitude,
+                                              src->wavefront.phase,
                                               src->wavenumber(),
-					      N_PX_PUPIL, N_PX_IMAGE, M,
-					      N_SIDE_LENSLET, src->dev_ptr,
+                                              N_PX_PUPIL, N_PX_IMAGE, M,
+                                              N_SIDE_LENSLET, src->dev_ptr,
                                               pixel_scale, d__theta_x, d__theta_y,
-					      absolute_pointing,1);
+                                              absolute_pointing,1);
   <<propagation (FFT, intensity and binning)>>
 }
 @ or, in the case of no overlapping lenslet, the [[propagateNoOverlap]] routine:
@@ -383,13 +410,13 @@ void imaging::propagateNoOverlap(source *src) {
   dim3 blockDim(16,16);
   gridDim  = dim3(1+N_DFT*N_SIDE_LENSLET/16,1+N_DFT*N_SIDE_LENSLET/16,N_SOURCE);
   complexAmplitudeNoOverlap LLL gridDim , blockDim RRR(d__wave_PUPIL, N_DFT,
-					      src->wavefront.amplitude,
-					      src->wavefront.phase,
-                                              src->wavenumber(),
-					      N_PX_PUPIL, N_PX_IMAGE, M,
-					      N_SIDE_LENSLET, src->dev_ptr,
-                                              pixel_scale, d__theta_x, d__theta_y,
-					      absolute_pointing,1);
+                                                       src->wavefront.amplitude,
+                                                       src->wavefront.phase,
+                                                       src->wavenumber(),
+                                                       N_PX_PUPIL, N_PX_IMAGE, M,
+                                                       N_SIDE_LENSLET, src->dev_ptr,
+                                                       pixel_scale, d__theta_x, d__theta_y,
+                                                       absolute_pointing,1);
 <<imaging CUFFT execution>>
 <<intensity normalization>>
 int N, Nb;
@@ -401,11 +428,11 @@ gridDim  = dim3(1+N_PX_CAMERA*N_SIDE_LENSLET/16,1+N_PX_CAMERA*N_SIDE_LENSLET/16,
                 N_SOURCE);
 binning LLL gridDim , blockDim RRR(d__frame, d__wave_PUPIL, N_DFT,
                                    src->dev_ptr,
-				   pixel_scale, d__theta_x, d__theta_y,
-				   absolute_pointing,
+                                   pixel_scale, d__theta_x, d__theta_y,
+                                   absolute_pointing,
                                    N_PX_IMAGE, N_PX_CAMERA, N_SIDE_LENSLET);
-    ++N_FRAME;
- }
+++N_FRAME;
+}
 @ or, in the case of no overlapping lenslet and no intensity normalization, the [[propagateNoOverlap]] routine:
 \index{imaging!imaging!propagateNoOverlapBare}
 <<propagation>>=
@@ -432,11 +459,11 @@ gridDim  = dim3(1+N_PX_CAMERA*N_SIDE_LENSLET/16,1+N_PX_CAMERA*N_SIDE_LENSLET/16,
                 N_SOURCE);
 binning LLL gridDim , blockDim RRR(d__frame, d__wave_PUPIL, N_DFT,
                                    src->dev_ptr,
-				   pixel_scale, d__theta_x, d__theta_y,
-				   absolute_pointing,
+                                   pixel_scale, d__theta_x, d__theta_y,
+                                   absolute_pointing,
                                    N_PX_IMAGE, N_PX_CAMERA, N_SIDE_LENSLET);
-    ++N_FRAME;
- }
+++N_FRAME;
+}
 @ a special case is the dispersed segment piston sensor:
 \index{imaging!imaging!propagateNoOverlapSPS}
 <<propagation>>=
@@ -471,11 +498,11 @@ if (src->fwhm>0) {
 }
 binning LLL gridDim , blockDim RRR(d__frame, d__wave_PUPIL, N_DFT,
                                    src->dev_ptr,
-				   pixel_scale, d__theta_x, d__theta_y,
-				   absolute_pointing,
+                                   pixel_scale, d__theta_x, d__theta_y,
+                                   absolute_pointing,
                                    N_PX_IMAGE, N_PX_CAMERA, N_SIDE_LENSLET);
-    ++N_FRAME;
- }
+++N_FRAME;
+}
 @ another one is the TT7
 \index{imaging!imaging!propagateTT7}
 <<propagation>>=
@@ -808,7 +835,7 @@ For a complex amplitude $\Phi$, the camera image $I$ is given by
 
 \index{imaging!imaging!propagateThroughPyramid}
 <<propagation through pyramid>>=
-void imaging::propagateThroughPyramid(source *src) {
+void imaging::propagateThroughPyramid(source *src, float alpha) {
   int M = N_PX_IMAGE/N_PX_CAMERA;
   dim3 gridDim;
   dim3 blockDim(16,16);
@@ -824,13 +851,13 @@ void imaging::propagateThroughPyramid(source *src) {
   <<imaging CUFFT execution>>
 
   gridDim = dim3(1+N_DFT/16,1+N_DFT/16, N_SOURCE);
-  apply_pyramid LLL gridDim , blockDim RRR( d__wave_PUPIL, N_DFT, N_PX_PUPIL);
+  apply_pyramid LLL gridDim , blockDim RRR( d__wave_PUPIL, N_DFT, N_PX_PUPIL, alpha);
 
   <<propagation (FFT, intensity and binning)>>
 }
 @ with
 <<apply pyramid>>=
-__global__ void apply_pyramid(float2 *d__wave_PUPIL, int N_DFT, int N_PX_PUPIL)
+__global__ void apply_pyramid(float2 *d__wave_PUPIL, int N_DFT, int N_PX_PUPIL, float alpha)
 {
   int i, j, k, w, half, iSource;
   float xi, yj, c, s, phasor, a, b;
@@ -848,45 +875,67 @@ __global__ void apply_pyramid(float2 *d__wave_PUPIL, int N_DFT, int N_PX_PUPIL)
     xi = (float) i;
     yj = (float) j;
     phasor = -2*(i+j)*(N_PX_PUPIL*1.5 + 1 - w*0.5)/N_DFT;
-    phasor -= 0.5*(fabs(xi)+fabs(yj));
+    phasor -= alpha*(fabs(xi)+fabs(yj));
     sincospif(phasor,&s,&c);
     a = d__wave_PUPIL[k].x;
     b = d__wave_PUPIL[k].y;
-    d__wave_PUPIL[k].x = a*c - b*s;
-    d__wave_PUPIL[k].y = b*c + a*s;
+    d__wave_PUPIL[k].x = (a*c - b*s)/N_DFT;
+    d__wave_PUPIL[k].y = (b*c + a*s)/N_DFT;
   }
 }
 @
 In the case of modulation:
 \index{imaging!imaging!propagateThroughModulatedPyramid}
 <<propagation through modulated pyramid>>=
-void imaging::propagateThroughModulatedPyramid(source *src, float modulation) {
-  int M, nTheta, kTheta;
-  float theta;
-  nTheta = (int) roundf(4*PI*modulation);
-  printf("nTheta=%d\n",nTheta);
+void imaging::propagateThroughModulatedPyramid(source *src,
+                                               float modulation,
+                                               int modulation_sampling,
+                                               float alpha) {
+  int M, nTheta, kTheta, N, Nb;
+  float theta, intensity_norm;
+  nTheta = modulation_sampling;
+  //printf("nTheta=%d\n",nTheta);
   M = N_PX_IMAGE/N_PX_CAMERA;
   dim3 gridDim;
   dim3 blockDim(16,16);
   for (kTheta = 0;kTheta<nTheta;kTheta++) {
-  gridDim  = dim3(1+N_DFT*N_SIDE_LENSLET/16,1+N_DFT*N_SIDE_LENSLET/16,N_SOURCE);
-  theta = 2*PI*kTheta/nTheta;
-  complexAmplitudeWithModulation LLL gridDim , blockDim RRR(d__wave_PUPIL, N_DFT,
-					      src->wavefront.amplitude,
-					      src->wavefront.phase,
-                                              src->wavenumber(),
-					      N_PX_PUPIL, N_PX_IMAGE, M,
-					      N_SIDE_LENSLET, src->dev_ptr,
-                                              pixel_scale, d__theta_x, d__theta_y,
-					      absolute_pointing,0,
-					      modulation,theta);
-  <<imaging CUFFT execution>>
+    gridDim  = dim3(1+N_DFT*N_SIDE_LENSLET/16,1+N_DFT*N_SIDE_LENSLET/16,N_SOURCE);
+    theta = 2*PI*kTheta/nTheta;
+    complexAmplitudeWithModulation LLL gridDim , blockDim RRR(d__wave_PUPIL, N_DFT,
+                                                              src->wavefront.amplitude,
+                                                              src->wavefront.phase,
+                                                              src->wavenumber(),
+                                                              N_PX_PUPIL, N_PX_IMAGE, M,
+                                                              N_SIDE_LENSLET, src->dev_ptr,
+                                                              pixel_scale, d__theta_x, d__theta_y,
+                                                              absolute_pointing,0,
+                                                              modulation,theta);
+    <<imaging CUFFT execution>>
 
-  gridDim = dim3(1+N_DFT/16,1+N_DFT/16,N_SOURCE);
-  apply_pyramid LLL gridDim , blockDim RRR( d__wave_PUPIL, N_DFT, N_PX_PUPIL);
+    gridDim = dim3(1+N_DFT/16,1+N_DFT/16,N_SOURCE);
+    apply_pyramid LLL gridDim , blockDim RRR( d__wave_PUPIL, N_DFT, N_PX_PUPIL, alpha);
 
-  <<propagation (FFT, intensity and binning)>>
-      }
+    <<imaging CUFFT execution>>
+    N_PHOTON_PER_FRAME = N_PHOTON_PER_SECOND_PER_FRAME = src->n_photon()*src->wavefront.M->area;
+    intensity_norm = src->wavefront.M->area/src->wavefront.M->nnz/nTheta;
+    N = N_DFT * N_DFT * N_LENSLET*N_SOURCE;
+    Nb = (int) ceilf( sqrtf(N)/16.0 );
+    gridDim  = dim3(Nb,Nb);
+    wave2intensity LLL gridDim , blockDim RRR( d__wave_PUPIL, N, intensity_norm);
+    if (src->fwhm>0) {
+      gridDim  = dim3(1+N_DFT*N_SIDE_LENSLET/16,1+N_DFT*N_SIDE_LENSLET/16,N_SOURCE);
+      <<propagation (convolution)>>
+    }
+    gridDim  = dim3(1+N_PX_CAMERA*N_SIDE_LENSLET/16,1+N_PX_CAMERA*N_SIDE_LENSLET/16,
+                    N_SOURCE);
+    binning LLL gridDim , blockDim RRR(d__frame, d__wave_PUPIL, N_DFT,
+                                       src->dev_ptr,
+                                       pixel_scale, d__theta_x, d__theta_y,
+                                       absolute_pointing,
+                                       N_PX_IMAGE, N_PX_CAMERA, N_SIDE_LENSLET);
+
+  }
+  ++N_FRAME;
 }
 @
 \subsubsection{Imaging numerical model}
@@ -1301,9 +1350,11 @@ void imaging::readout(float exposureTime, float readOutNoiseRms,
 float nbgp, nf2;
 int n;
 nbgp = (N_FRAME>0) ? nBackgroundPhoton*N_FRAME : nBackgroundPhoton;
+/*
 n = N_SIDE_LENSLET*N_PX_CAMERA;
 n *= n;
 nbgp /= n;
+*/
 nf2 = noiseFactor*noiseFactor;
 noisify LLL gridDim, blockDim RRR (devStates, d__frame, N,
 				   readOutNoiseRms, unit_exposureTime,
@@ -1330,8 +1381,8 @@ __global__ void noisify(curandState *state, float *frame, const int n_frame,
        {
          localState = state[id];
          frame[id] += nBackgroundPhoton;
-	 frame[id] *= photoelectron_gain;
-	 frame[id] *= noiseFactor2;
+         frame[id] *= photoelectron_gain;
+         frame[id] *= noiseFactor2;
          frame[id] *= exposureTime;
          lambda = frame[id];
          //       frame[id] = (float) curand_poisson(&localState, (double) lambda);
@@ -1351,7 +1402,7 @@ __global__ void noisify(curandState *state, float *frame, const int n_frame,
 	 frame[id] = (frame[id]<0) ? 0 : frame[id]; 
 	 frame[id] += (readOutNoiseRms>0) ?
 	   curand_normal(&localState)*readOutNoiseRms : 0;
-	 frame[id] -= nBackgroundPhoton*exposureTime*photoelectron_gain;
+	 //frame[id] -= nBackgroundPhoton*exposureTime*photoelectron_gain;
 	 //frame[id] = (frame[id]>0) ? floorf(frame[id]) : ceilf(frame[id]);
 	 state[id] = localState;
        }

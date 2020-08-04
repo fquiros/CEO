@@ -1,20 +1,24 @@
+from .tools import ascupy
 from . import constants
-from .utilities import cuFloatArray, cuDoubleArray, cuIntArray, cuFloatComplexArray, MaskAbstract, Mask, Telescope, GMT, StopWatch, SparseMatrix, SparseGradient, wavefrontFiniteDifference, setDevice
-from .source import FreeBundle, Complex_amplitude, Source, JSource
+from .utilities import cuFloatArray, cuDoubleArray, cuIntArray, cuFloatComplexArray, MaskAbstract, Mask, Telescope, GMT, StopWatch, SparseMatrix, SparseGradient, wavefrontFiniteDifference, setDevice, Knu, polyWind, polyWinds
+from .source import FreeBundle, Complex_amplitude, Source, PSSn, JSource
 from .rayTracing import ZernikeS, Coordinates, Coordinate_system, Quaternion, Aperture, Conic, Transform_to_S, Transform_to_R, Intersect, Reflect, Refract
 from .imaging import Imaging, JImaging
 from .centroiding import Centroiding
 from .shackHartmann import ShackHartmann, TT7, GeometricShackHartmann, JShackHartmann
-from .pyramid import Pyramid
 from .segmentPistonSensor import SegmentPistonSensor
-from .aaStats import AaStats, PaStats
+from .aaStats import AaStats, AaStatsMatrix, PaStats
+from .BTBT import Btbt
+from .GBTBT import Gbtbt
+from .iterativeSolvers import Minres
 from .LMMSE import Lmmse, LmmseSH, BilinearInterpolation
 from .atmosphere import AtmosphereAbstract, Atmosphere, GmtAtmosphere, Layer, JGmtAtmosphere
 from .gmtMirrors import BendingModes, KarhunenLoeve, GmtMirrors, GMT_M1, GMT_M2, StereoscopicEdgeSensors, LateralEdgeSensors, DistanceEdgeSensors, Modes
-from .GMTLIB import CalibrationVault, GMT_MX, JGMT_MX, GeometricTT7, IdealSegmentPistonSensor, SegmentTipTiltSensor, EdgeSensors, DispersedFringeSensor, Trace, PSSn
+from .GMTLIB import CalibrationVault, GMT_MX, JGMT_MX, GeometricTT7, SegmentTipTiltSensor, EdgeSensors, Trace, PSSn as GMT_PSSn
 from .mapping import Mapping
 from . import phaseStats
-                                
+from .sensors import PyramidWFS as Pyramid
+from .sensors import DispersedFringeSensor, IdealSegmentPistonSensor
 from IPython.display import Markdown, display
 def sweetcheat():
     def printmd(string):

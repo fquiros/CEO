@@ -42,8 +42,10 @@
 #include "gmtMirrors.h"
 <<GMT chief ray tracing kernel>>
 <<GMT ray tracing kernel>>
+<<GMT tracing all kernel>>
 <<GMT blocking kernel>>
 <<GMT track kernel>>
+<<GMT locate kernel>>
 <<nearest neighbor kernel>>
 <<bilinear kernel>>
 <<stereoscopic edge sensors initialization kernel>>
@@ -94,9 +96,11 @@ void blocking(bundle *rays);
 void global_tiptilt(float tip, float tilt);
 void test_ray_tracing(void);
 void track(float *x, float *y, float *z, int N, int idx);
+void locate(float *x, float *y, float *z, int N, int idx);
 void remove(int *seg_ID, int N_ID);
 void keep(int *seg_ID, int N_ID);
 void update_conic_c(rtd *_conic_c_);
+void update_conic_k(rtd *_conic_k_);
 void set_reflectivity(float *reflectivity);
 @
 The GMT M12 parameters are:
@@ -163,7 +167,7 @@ vector conic_origin[7], *d__conic_origin;
 \item the conic parameters:
 <<GMT M12 parameters>>=
 rtd conic_c, conic_k;
-rtd *d__conic_c;
+rtd *d__conic_c, *d__conic_k;
 @
 \item the reference frames of the rigid bodies:
 <<GMT M12 parameters>>=
@@ -296,6 +300,16 @@ HANDLE_ERROR( cudaMalloc((void**)&d__conic_c, n_byte ) );
 HANDLE_ERROR( cudaMemcpy( d__conic_c, h__conic_c,
               n_byte, cudaMemcpyHostToDevice ) );
 free(h__conic_c);
+
+rtd *h__conic_k;
+n_byte = 7*sizeof(rtd);
+h__conic_k = (rtd *)malloc( n_byte );
+for (int k=0; k<7; k++)
+  h__conic_k[k] = conic_k;
+HANDLE_ERROR( cudaMalloc((void**)&d__conic_k, n_byte ) );
+HANDLE_ERROR( cudaMemcpy( d__conic_k, h__conic_k,
+                          n_byte, cudaMemcpyHostToDevice ) );
+free(h__conic_k);
 
 area_fraction = 1.0;
 vector __v0(0.0,0.0,0.0),
@@ -503,6 +517,7 @@ motion_CS.cleanup();
 HANDLE_ERROR( cudaFree( d__conic_origin ) );
 HANDLE_ERROR( cudaFree( d__valid_segments ) );
 HANDLE_ERROR( cudaFree( d__conic_c ) );
+HANDLE_ERROR( cudaFree( d__conic_k ) );
 HANDLE_ERROR( cudaFree( d__segment_reflectivity ) );
 @
 The segment radius of curvature is updated with:
@@ -512,6 +527,15 @@ void gmt_m1::update_conic_c(rtd *_conic_c_)
 {
   HANDLE_ERROR( cudaMemcpy( d__conic_c, _conic_c_,
               sizeof(rtd)*7, cudaMemcpyHostToDevice ) );
+}
+@
+The segment conic constant is updated with:
+\index{gmtMirrors!gmt\_m1!update\_conic\_k}
+<<GMT M1 functions>>=
+  void gmt_m1::update_conic_k(rtd *_conic_k_)
+{
+  HANDLE_ERROR( cudaMemcpy( d__conic_k, _conic_k_,
+                            sizeof(rtd)*7, cudaMemcpyHostToDevice ) );
 }
 @
 The rigid body motion parameters are updated with:
@@ -675,15 +699,6 @@ void gmt_m1::trace(bundle *rays)
   Rri2 = R2*ri*ri;
   <<GMT trace common>>
 }
-void gmt_m1::traceall(bundle *rays)
-{
-  rays->V.area = area0*rays->N_BUNDLE*area_fraction;
-  dim3 blockDim, gridDim;
-  rtd R2, Rri2;
-  R2 = D_clear*D_clear*0.25*1.0325;
-  Rri2 = 0;
-  <<GMT trace common>>
-}
 @ where
 <<GMT trace common>>=
  /* if (V!=NULL) { */
@@ -716,7 +731,7 @@ if (ZS!=NULL)
                                               aperture_CS.d__origin,
                                               conic_CS.d__R,
                                               conic_CS.d__origin,
-                                              conic_k, d__conic_c,
+                                              d__conic_k, d__conic_c,
                                               d__conic_origin,
                                               rigid_body_CS.d__R,
                                               rigid_body_CS.d__origin,
@@ -737,7 +752,7 @@ if (BS!=NULL)
                                                  aperture_CS.d__origin,
                                                  conic_CS.d__R,
                                                  conic_CS.d__origin,
-                                                 conic_k, d__conic_c,
+                                                 d__conic_k, d__conic_c,
                                                  d__conic_origin,
                                                  rigid_body_CS.d__R,
                                                  rigid_body_CS.d__origin,
@@ -764,7 +779,7 @@ __global__ void m1_trace_kernel(char *mask, ray *d__ray, int N_RAY,
                                 rtd inner2, rtd outer2,
                                 rtd *d__aperture_R, vector *d__aperture_origin,
                                 rtd *d__conic_R, vector *d__conic_origin,
-                                const rtd Fk, rtd *d__Fc,
+                                rtd *d__Fk, rtd *d__Fc,
                                 vector *d__conic_self_origin,
                                 rtd *d__rigid_body_R, vector *d__rigid_body_origin,
                                 rtd *d__motion_R, vector *d__motion_origin,
@@ -778,7 +793,7 @@ __global__ void m1_trace_kernel(char *mask, ray *d__ray, int N_RAY,
   rtd x, y, z, x1, y1, s0, k, l, m;
   rtd s1, S, K, L ,M, dSds;
   rtd G2, a;
-  rtd Fc;
+  rtd Fc, Fk;
   vector d__origin, xyz, klm, xyz_GS, klm_GS, Snormal;
 
   i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -795,6 +810,7 @@ __global__ void m1_trace_kernel(char *mask, ray *d__ray, int N_RAY,
     for (iCoordSys=0; iCoordSys<7 ; iCoordSys++)
       {
 	Fc = d__Fc[iCoordSys];
+	Fk = d__Fk[iCoordSys];
         if (d__valid_segments[iCoordSys]>0) {
 	d__origin = d__conic_self_origin[iCoordSys];
 
@@ -823,7 +839,7 @@ __global__ void m1_bm_trace_kernel(char *mask, ray *d__ray, int N_RAY,
                                    rtd inner2, rtd outer2,
                                    rtd *d__aperture_R, vector *d__aperture_origin,
                                    rtd *d__conic_R, vector *d__conic_origin,
-                                   const rtd Fk, rtd *d__Fc,
+                                   rtd *d__Fk, rtd *d__Fc,
                                    vector *d__conic_self_origin,
                                    rtd *d__rigid_body_R, vector *d__rigid_body_origin,
                                    rtd *d__motion_R, vector *d__motion_origin,
@@ -837,7 +853,7 @@ __global__ void m1_bm_trace_kernel(char *mask, ray *d__ray, int N_RAY,
   rtd x, y, z, x1, y1, s0, k, l, m;
   rtd s1, S, K, L ,M, dSds;
   rtd G2, a;
-  rtd Fc;
+  rtd Fc, Fk;
   vector d__origin, xyz, klm, xyz_GS, klm_GS, Snormal;
 
   i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -853,6 +869,7 @@ __global__ void m1_bm_trace_kernel(char *mask, ray *d__ray, int N_RAY,
     for (iCoordSys=0; iCoordSys<7 ; iCoordSys++)
       {
 	Fc = d__Fc[iCoordSys];
+	Fk = d__Fk[iCoordSys];
         if (d__valid_segments[iCoordSys]>0) {
 	d__origin = d__conic_self_origin[iCoordSys];
 
@@ -1424,6 +1441,155 @@ L = partial_y_zernike_surface(&xyz_GS, &d__origin, max_n,
                                d__cy + iCoordSys*b_n_mode, R);
 M = partial_z_zernike_surface();
 @
+\subsection{Ray tracing without vignetting}
+\label{sec:ray-tracing-no-vignet}
+
+\index{gmtMirrors!gmt\_m1!traceall}
+<<GMT M1 functions>>=
+void gmt_m1::traceall(bundle *rays)
+{
+  rays->V.area = area0*rays->N_BUNDLE*area_fraction;
+  dim3 blockDim, gridDim;
+  rtd R2, Rri2;
+  R2 = D_clear*D_clear*0.25;
+  Rri2 = R2*ri*ri*0;
+  <<GMT trace all common>>
+}
+@ where
+<<GMT trace all common>>=
+ /* if (V!=NULL) { */
+ /*    blockDim = dim3(N_THREAD,N_THREAD); */
+ /*    gridDim  = dim3(rays->N_RAY/N_THREAD2+1,1,rays->N_BUNDLE); */
+ /*    intersection LLL gridDim , blockDim RRR (V->m, rays->d__ray, rays->N_RAY); */
+ /* } */
+ V = &(rays->V);
+ // fprintf(stdout,"R2=%5.2f - Rri2=%5.2f\n",R2,Rri2);
+ blockDim = dim3(1,1);
+ gridDim  = dim3(1,1,rays->N_BUNDLE);
+ m1_trace_chief_kernel LLL gridDim , blockDim RRR (V->m, rays->d__chief_ray, 1,
+						   conic_CS.d__R,
+						   conic_CS.d__origin,
+						   conic_k, conic_c,
+						   d__conic_origin,
+						   rigid_body_CS.d__R,
+						   rigid_body_CS.d__origin,
+						   motion_CS.d__R,
+						   motion_CS.d__origin);
+ blockDim = dim3(N_THREAD,N_THREAD);
+ gridDim  = dim3(rays->N_RAY/N_THREAD2+1,1,rays->N_BUNDLE);
+/*HANDLE_ERROR( cudaMemset(V->m, 0, sizeof(char)*rays->N_RAY*rays->N_BUNDLE ) );
+ HANDLE_ERROR( cudaMemset(rays->d__piston_mask, 0,
+			  sizeof(int)*rays->N_RAY*rays->N_BUNDLE ) );
+*/
+if (ZS!=NULL)
+  m1_trace_all_kernel LLL gridDim , blockDim RRR (V->m, rays->d__ray, rays->N_RAY,
+                                              Rri2, R2,
+                                              aperture_CS.d__R,
+                                              aperture_CS.d__origin,
+                                              conic_CS.d__R,
+                                              conic_CS.d__origin,
+                                              d__conic_k, d__conic_c,
+                                              d__conic_origin,
+                                              rigid_body_CS.d__R,
+                                              rigid_body_CS.d__origin,
+                                              motion_CS.d__R,
+                                              motion_CS.d__origin,
+                                              ZS->max_n, ZS->n_mode,
+                                              ZS->d__a, ZS->d__cx, ZS->d__cy,
+                                              0.5*D_full,
+                                              rays->d__chief_ray,
+                                              rays->d__piston_mask,
+                                              d__valid_segments,
+                                              d__segment_reflectivity);
+/*
+if (BS!=NULL)
+  m1_bm_trace_kernel LLL gridDim , blockDim RRR (V->m, rays->d__ray, rays->N_RAY,
+                                                 Rri2, R2,
+                                                 aperture_CS.d__R,
+                                                 aperture_CS.d__origin,
+                                                 conic_CS.d__R,
+                                                 conic_CS.d__origin,
+                                                 d__conic_k, d__conic_c,
+                                                 d__conic_origin,
+                                                 rigid_body_CS.d__R,
+                                                 rigid_body_CS.d__origin,
+                                                 motion_CS.d__R,
+                                                 motion_CS.d__origin,
+                                                 BS->n_mode, BS->d__b,
+                                                 BS->d__BMS,
+                                                 BS->BM_N_SAMPLE, BS->BM_radius,
+                                                 rays->d__chief_ray,
+                                                 rays->d__piston_mask,
+                                                 d__valid_segments,
+                                                 d__segment_reflectivity);
+
+intersection LLL gridDim , blockDim RRR (V->m, rays->d__ray, rays->N_RAY);
+float previous_nnz = rays->V.nnz;
+//fprintf(stdout,"M%d previous nnz rays: %f\n",M_ID,previous_nnz);
+rays->V.set_filter_quiet();
+//fprintf(stdout,"M%d current nnz rays: %f\n",M_ID,rays->V.nnz);
+if (previous_nnz<rays->N_RAY_TOTAL)
+  rays->V.area *= rays->V.nnz/previous_nnz;
+//fprintf(stdout,"M%d current area: %f\n",M_ID,rays->V.area);
+*/
+@ and the kernel
+<<GMT tracing all kernel>>=
+__global__ void m1_trace_all_kernel(char *mask, ray *d__ray, int N_RAY,
+                                rtd inner2, rtd outer2,
+                                rtd *d__aperture_R, vector *d__aperture_origin,
+                                rtd *d__conic_R, vector *d__conic_origin,
+                                rtd *d__Fk, rtd *d__Fc,
+                                vector *d__conic_self_origin,
+                                rtd *d__rigid_body_R, vector *d__rigid_body_origin,
+                                rtd *d__motion_R, vector *d__motion_origin,
+                                int max_n, int n_mode,
+                                rtd *d__a, rtd *d__cx, rtd *d__cy, rtd R,
+                                ray *d__chief_ray, int *d__piston_mask,
+                                char *d__valid_segments, float *reflectivity)
+{
+  int i, j, ij, iCoordSys, iSource, b_n_mode;
+  rtd rho2;
+  rtd x, y, z, x1, y1, s0, k, l, m;
+  rtd s1, S, K, L ,M, dSds;
+  rtd G2, a;
+  rtd Fc, Fk;
+  vector d__origin, xyz, klm, xyz_GS, klm_GS, Snormal;
+
+  i = blockIdx.x * blockDim.x + threadIdx.x;
+  j = threadIdx.y;
+  //  iCoordSys = blockIdx.y;
+  ij = j * gridDim.x * blockDim.x + i;
+  iSource = blockIdx.z;
+  j = ij;
+  ij += iSource*N_RAY;
+  b_n_mode = max_n*(max_n+1)*0.5;
+  if  ( ( j<N_RAY ) && (d__ray[ij].v) )// & (iCoordSys<1) )
+  {
+    iCoordSys = 6;
+    // for (iCoordSys=0; iCoordSys<7 ; iCoordSys++)
+      {
+	Fc = d__Fc[iCoordSys];
+	Fk = d__Fk[iCoordSys];
+        if (d__valid_segments[iCoordSys]>0) {
+	d__origin = d__conic_self_origin[iCoordSys];
+
+        <<from global CS to motion CS>>
+
+		  {
+	    mask[ij] = 1;
+	    d__piston_mask[ij] = iCoordSys + 1;
+
+            <<from motion CS to conic intersection and back to global CS>>
+	    d__ray[ij].optical_path_difference +=
+         d__ray[ij].optical_path_length - d__chief_ray[iSource].optical_path_length;
+      d__ray[ij].throughput *= reflectivity[iCoordSys];
+	    return;
+	  }
+        }
+      }
+  }
+}
+@
 \subsection{Segment selection}
 \label{sec:segment-selection}
 
@@ -1468,7 +1634,7 @@ HANDLE_ERROR( cudaMemcpy( d__valid_segments, valid,
 \subsection{Mirror location tracker}
 \label{sec:mirr-locat-track}
 
-The track function transforms the coordinates $(x,y,z)$ in the motion CS of segment [[idx]] to the GCS.
+The [[track]] function transforms the coordinates $(x,y,z)$ in the motion CS of segment [[idx]] to the GCS.
 
 \index{gmtMirrors!gmt\_m1!track}
 <<GMT M1 functions>>=
@@ -1502,17 +1668,65 @@ __global__ void track_kernel(float *x, float *y, float *z, const int N,
      v.z = z[i];
      // MOTION <<<
      backward_transform(&v, &v,
-			d__motion_R+iCoordSys*9, d__motion_origin+iCoordSys);
+                        d__motion_R+iCoordSys*9,
+                        d__motion_origin+iCoordSys);
      // RIGID_BODY <<<
      backward_transform(&v, &v,
-			d__rigid_body_R+iCoordSys*9,
-			d__rigid_body_origin+iCoordSys);
+                        d__rigid_body_R+iCoordSys*9,
+                        d__rigid_body_origin+iCoordSys);
      x[i] = v.x;
      y[i] = v.y;
      z[i] = v.z;
    }
 }
+@
 
+The [[locate]] function transforms the coordinates $(x,y,z)$ in the GCS to the
+motion CS of segment [[idx]]
+
+\index{gmtMirrors!gmt\_m1:locate}
+<<GMT M1 functions>>=
+void gmt_m1::locate(float *d__x, float *d__y, float *d__z, int N, int idx)
+{
+  <<GMT locate common>>
+}
+@  with
+<<GMT locate common>>=
+dim3 blockDim(N_THREAD,1);
+dim3 gridDim(N/N_THREAD+1,1);
+locate_kernel LLL gridDim, blockDim RRR (d__x, d__y, d__z, N,
+					idx,
+					rigid_body_CS.d__R,
+					rigid_body_CS.d__origin,
+					motion_CS.d__R,
+					motion_CS.d__origin);
+@ and
+<<GMT locate kernel>>=
+__global__ void locate_kernel(float *x, float *y, float *z, const int N,
+			     const int iCoordSys,
+			     rtd *d__rigid_body_R, vector *d__rigid_body_origin,
+			     rtd *d__motion_R, vector *d__motion_origin)
+ {
+   int i;
+   vector v;
+   i = blockIdx.x * blockDim.x + threadIdx.x;
+   if (i<N) {
+     v.x = x[i];
+     v.y = y[i];
+     v.z = z[i];
+     // RIGID_BODY >>>
+     forward_transform(&v, &v,
+                       d__rigid_body_R+iCoordSys*9,
+                       d__rigid_body_origin+iCoordSys);
+     // MOTION >>>
+     forward_transform(&v, &v,
+                       d__motion_R+iCoordSys*9,
+                       d__motion_origin+iCoordSys);
+     x[i] = v.x;
+     y[i] = v.y;
+     z[i] = v.z;
+   }
+}
 @
 \subsection{Global tip--tilt}
 \label{sec:global-tip-tilt}
@@ -1777,6 +1991,13 @@ void gmt_m2::update_conic_c(rtd *_conic_c_)
               sizeof(rtd)*7, cudaMemcpyHostToDevice ) );
 }
 @
+<<GMT M2 functions>>=
+  void gmt_m2::update_conic_k(rtd *_conic_k_)
+{
+  HANDLE_ERROR( cudaMemcpy( d__conic_k, _conic_k_,
+                            sizeof(rtd)*7, cudaMemcpyHostToDevice ) );
+}
+@
 \subsection{Blocking}
 \label{sec:blocking-2}
 
@@ -1807,10 +2028,10 @@ void gmt_m2::traceall(bundle *rays)
   rays->V.area = area0*rays->N_BUNDLE*area_fraction;
   dim3 blockDim, gridDim;
   rtd R2, Rri2;
-  R2 = D_clear*D_clear*0.25*1.0325;
-  Rri2 = 0;
-  <<GMT trace common>>
-}
+  R2 = D_clear*D_clear*0.25;
+  Rri2 = R2*ri*ri*0;
+  <<GMT trace all common>>
+      }
 @
 The rigid body motion parameters are updated with:
 \index{gmtMirrors!gmt\_m2!update}
@@ -1847,8 +2068,29 @@ void gmt_m2::keep(int *seg_ID, int N_ID)
   <<GMT keep segments>>
 }
 @
-\subsection{Global motions}
-\label{sec:global-motions}
+\subsection{Mirror location tracker}
+\label{sec:mirr-locat-track}
+
+The [[track]] function transforms the coordinates $(x,y,z)$ in the motion CS of segment [[idx]] to the GCS.
+
+\index{gmtMirrors!gmt\_m2!track}
+<<GMT M2 functions>>=
+void gmt_m2::track(float *d__x, float *d__y, float *d__z, int N, int idx)
+{
+  <<GMT track common>>
+}
+@
+
+The [[locate]] function transforms the coordinates $(x,y,z)$ in the GCS to the
+motion CS of segment [[idx]]
+
+\index{gmtMirrors!gmt\_m2:locate}
+<<GMT M2 functions>>=
+void gmt_m2::locate(float *d__x, float *d__y, float *d__z, int N, int idx)
+{
+  <<GMT locate common>>
+}
+@
 
 \subsection{Global tip--tilt}
 \label{sec:global-tip-tilt-1}
@@ -1860,6 +2102,7 @@ void gmt_m2::global_tiptilt(float tip, float tilt)
   <<GMT global tip-tilt common>>
 }
 @
+
 \subsubsection{Tip--tilt neutral}
 \label{sec:tip-tilt-neutral}
 
