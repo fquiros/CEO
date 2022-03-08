@@ -1,6 +1,7 @@
 from ceo import FanBundle, Source, Mask, cuFloatArray
 from ceo.tools import ascupy
 import numpy as np
+import cupy as cp
 
 class wfpt_source:
     """
@@ -44,6 +45,17 @@ class wfpt_source:
 
         self.__WFphase = ascupy(self._gs.wavefront.phase)
         #self.__WFamplitude = ascupy(self._gs.wavefront.amplitude)
+        self.__WFphase_ref = cp.zeros(self.__WFphase.shape, dtype=np.float32)
+
+        #-- Needed to calibrate a segment piston mask:
+        vv = cp.linspace(-1,1,self._nPx)*(rays_box_size/2)
+        self.__xx, self.__yy = cp.meshgrid(vv,vv) # rows x cols
+        outersegrad = 8.710 # separation between central and outer segments
+        seg_angle = cp.array([90, 30, 330, 270, 210, 150])*cp.pi/180 # following official LCS ordering
+        seg_xc, seg_yc = outersegrad*cp.cos(seg_angle), outersegrad*cp.sin(seg_angle)
+        self.__xc = cp.append(seg_xc, 0)
+        self.__yc = cp.append(seg_yc, 0)
+        self.__pupmask = ascupy(self._gs.amplitude)
 
     
     @property
@@ -95,9 +107,39 @@ class wfpt_source:
         #self.tel.alter(cuFloatArray(vig))
         #self.__WFamplitude[:] = vig.astype(np.float32)
         
-        
-        
-        
-        
-        
-        
+    @property
+    def piston_mask(self):
+        xx = self.__xx * self.__pupmask
+        yy = self.__yy * self.__pupmask
+        Dseg = 8.370 # segment diameter (a bit oversized)
+        return [(((xx-self.__xc[idx])**2 + (yy-self.__yc[idx])**2 <= (Dseg/2)**2) * 
+                 self.__pupmask.astype('bool')).ravel() for idx in range(7)]
+
+
+    def set_reference_wavefront(self):
+        self.__WFphase_ref[:] = self.__WFphase[:]
+
+
+    @property
+    def reference_wavefront(self):
+        return self.__WFphase_ref.reshape((self._nPx,self._nPx)).get()
+
+
+    def phaseRms(self, where='pupil'):
+        wf = (self.__WFphase - self.__WFphase_ref).ravel()
+        if where == 'pupil':
+            return cp.std(wf[self.__pupmask.astype('bool').ravel()]).get()
+        elif where == 'segments':
+            segmask = self.piston_mask
+            #wf = self._gs.wavefront.phase.host().ravel()
+            return np.array([cp.std(wf[segmask[idx]]).get() for idx in range(7)])
+
+
+    def piston(self, where='pupil'):
+        wf = (self.__WFphase - self.__WFphase_ref).ravel()
+        if where == 'pupil':
+            return cp.mean(wf[self.__pupmask.astype('bool').ravel()]).get()
+        elif where == 'segments':
+            segmask = self.piston_mask
+            #wf = self._gs.wavefront.phase.host().ravel()
+            return np.array([cp.mean(wf[segmask[idx]]).get() for idx in range(7)])
