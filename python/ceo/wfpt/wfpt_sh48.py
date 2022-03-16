@@ -6,16 +6,7 @@ class wfpt_sh48(ShackHartmann):
     ShackHartmann wrapper class for the Probe Zero SH48
     """
 
-    def __init__(self, rays_box_sampling, DFT_osf=2, N_PX_IMAGE=24, BIN_IMAGE=3, **kwargs):
-        
-        # WFPT SH fixed parameters
-        N_SIDE_LENSLET = 50
-        rays_box_size = 27.31 # m 
-        
-        if np.mod(rays_box_sampling-1, N_SIDE_LENSLET) != 0:
-            raise ValueError("rays_box_sampling-1 must be multiple of N_SIDE_LENSLET")
-        N_PX_LENSLET = (rays_box_sampling-1) // N_SIDE_LENSLET
-        d = rays_box_size / N_SIDE_LENSLET
+    def __init__(self, **kwargs):
         
         #--- Detector noise parameters:
         
@@ -23,24 +14,50 @@ class wfpt_sh48(ShackHartmann):
         #readOutNoiseRms':0.5, 'noiseFactor':np.sqrt(2),
         #'photoElectronGain':0.63, 'exposureTime':1, 'intensityThreshold':0.0}
         
-        ShackHartmann.__init__(self, N_SIDE_LENSLET=N_SIDE_LENSLET, N_PX_LENSLET=N_PX_LENSLET, d=d, 
-                               DFT_osf=DFT_osf, N_PX_IMAGE=N_PX_IMAGE, BIN_IMAGE=BIN_IMAGE, **kwargs)
+        ShackHartmann.__init__(self, **kwargs)
         
     
     def calibrate(self, src, threshold=0.0):
+        """
+        Calibrate SH sensor valid sub-aperture mask and reference slope vector.
+        """
         if src.fwhm == 0.0:
             import warnings
             warnings.warn("Calibrating the SH with a point source is not recommended. Set src.fwhm to simulate extended source.")
         else:
-            print("Source FWHM: %.3f arcsec"%(src.fwhm * self.camera.pixelScaleArcsec(src._gs) / self.BIN_IMAGE))
+            print("SH source FWHM: %.3f arcsec"%(src.fwhm * self.camera.pixelScaleArcsec(src._gs) /
+                                                 self.BIN_IMAGE))
+
         super().calibrate(src._gs, threshold)
+        self.__valid_lenslet_mask = self.valid_lenslet.f.host().reshape((self.N_SIDE_LENSLET,
+                                                            self.N_SIDE_LENSLET)).astype('bool')
+
+        print("Total SH valid sub-apertures: %d"%self.n_valid_lenslet)
     
     
     def propagate(self, src):
         super().propagate(src._gs)
-
-        
+    
     def analyze(self, src):
         super().analyze(src._gs)
+    
+    @property
+    def valid_lenslet_mask(self):
+        return self.__valid_lenslet_mask
+    
+    @property
+    def N_PX_SUBAP(self):
+        return self.N_PX_IMAGE // self.BIN_IMAGE
+    
+    def slopes2d(self, slopes_vector=None):
+        """
+        Returns the sx and sy slopes as maps.
+        """
+        if slopes_vector is None:
+            slopes_vector = self.get_measurement()
         
-        
+        sx2d = np.full((self.N_SIDE_LENSLET, self.N_SIDE_LENSLET), np.nan)
+        sx2d[self.valid_lenslet_mask] = slopes_vector[0:self.n_valid_lenslet]
+        sy2d = np.full((self.N_SIDE_LENSLET, self.N_SIDE_LENSLET), np.nan)
+        sy2d[self.valid_lenslet_mask] = slopes_vector[self.n_valid_lenslet:]
+        return sx2d, sy2d
