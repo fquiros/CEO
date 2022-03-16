@@ -99,3 +99,20 @@ def show_SH_slopes(sx2d, sy2d, fig=None, ax=None, title=None, clb_label=None):
     
     if title is not None:
         ax.set_title(title)
+        
+
+def show_DFS_data(data, fig=None, ax=None):
+    """
+    Show DFS data (fringes, fftlets) passed as a data cube.
+    See also: DFS method "get_data_cube".
+    """
+    if fig is None:
+        fig, ax = plt.subplots(ncols=6, nrows=2)
+        fig.set_size_inches((10,3))
+        fig.dpi=300
+        for k in range(12):
+            (ax.ravel())[k].imshow(data[:,:,k], cmap=plt.cm.gist_earth_r, origin='lower', interpolation='None')
+            (ax.ravel())[k].autoscale(False)
+            (ax.ravel())[k].set_title('%d'%(k+1), fontsize=12)
+            (ax.ravel())[k].axis('off')
+    fig.tight_layout()
