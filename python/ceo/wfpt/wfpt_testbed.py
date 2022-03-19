@@ -173,11 +173,11 @@ class wfpt_testbed:
 
     @property
     def state(self):
-        d = {'M1_PTT': {'segment piston': self.M1_PTT.motion_CS.origin[:,2],
-                        'segment tip-tilt': self.M1_PTT.motion_CS.euler_angles[:,0:2]},
+        d = {'M1_PTT': {'segment piston': (-1)*self.M1_PTT.motion_CS.origin[:,2],
+                        'segment tip-tilt': (-1)*self.M1_PTT.motion_CS.euler_angles[:,0:2]},
              'M2_PTT': {'segment piston': self.M2_PTT.motion_CS.origin[:,2],
                         'segment tip-tilt': self.M2_PTT.motion_CS.euler_angles[:,0:2]},
-             'M1_DM': {'actuators': self.M1_DM.modes.a[-1,:]},
+             'M1_DM': {'actuators': (-1)*self.M1_DM.modes.a[-1,:]},
              'M2_DM': {'actuators': self.M2_DM.modes.a[-1,:]},
             }
         return wfpt_state(d)
@@ -188,15 +188,19 @@ class wfpt_testbed:
         Updates the position of all active mirrors using a state vector.
         """
         for mirror in state.state:
+            if 'M1' in mirror:
+                sign = -1
+            else:
+                sign = +1
             if 'PTT' in mirror:
                 for dof in state[mirror]:
                     if dof == 'segment piston':
-                        self[mirror].motion_CS.origin[:,2] = state[mirror][dof][:]
+                        self[mirror].motion_CS.origin[:,2] = sign * state[mirror][dof][:]
                     elif dof == 'segment tip-tilt':
-                        self[mirror].motion_CS.euler_angles[:,0:2] = state[mirror][dof][:]
+                        self[mirror].motion_CS.euler_angles[:,0:2] = sign * state[mirror][dof][:]
                 self[mirror].motion_CS.update()
             if 'DM' in mirror:
-                self[mirror].modes.a[-1,:] = state[mirror]['actuators'][:]
+                self[mirror].modes.a[-1,:] = sign * state[mirror]['actuators'][:]
                 self[mirror].modes.update()
     
     
@@ -232,7 +236,7 @@ class wfpt_testbed:
         """
         
         def M1_DM_zonal_update(_stroke_):
-            self.M1_DM.modes.a[-1,kAct] = _stroke_
+            self.M1_DM.modes.a[-1,kAct] = (-1) * _stroke_
             self.M1_DM.modes.update()
             
         def M2_DM_zonal_update(_stroke_):
@@ -271,8 +275,8 @@ class wfpt_testbed:
             if mode=="segment tip-tilt":
                 D = np.zeros((wfs.get_measurement_size(),2*7))
                 idx = 0
-                Rx = lambda x : self.M1_PTT.update(origin=[0,0,0],euler_angles=[x,0,0],idx=kSeg)
-                Ry = lambda x : self.M1_PTT.update(origin=[0,0,0],euler_angles=[0,x,0],idx=kSeg)
+                Rx = lambda x : self.M1_PTT.update(origin=[0,0,0],euler_angles=[-x,0,0],idx=kSeg)
+                Ry = lambda x : self.M1_PTT.update(origin=[0,0,0],euler_angles=[0,-x,0],idx=kSeg)
                 sys.stdout.write("Segment #:")
                 for kSeg in range(1,8):
                     sys.stdout.write("%d "%kSeg)
@@ -286,7 +290,7 @@ class wfpt_testbed:
                 n_mode = 7
                 D = np.zeros((wfs.get_measurement_size(),n_mode))
                 idx = 0
-                Tz = lambda x : self.M1_PTT.update(origin=[0,0,x],euler_angles=[0,0,0],idx=kSeg)
+                Tz = lambda x : self.M1_PTT.update(origin=[0,0,-x],euler_angles=[0,0,0],idx=kSeg)
                 sys.stdout.write("Segment #:")
                 for kSeg in range(1,8):
                     sys.stdout.write("%d "%kSeg)
