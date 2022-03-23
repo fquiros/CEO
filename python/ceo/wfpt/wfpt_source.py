@@ -39,8 +39,8 @@ class wfpt_source:
 
         #->>>>>>TODO: compute origin (x,y,0) coordinates for a given (zenith,azimuth)
         self._rays_prms = {"x":xp,"y":yp,"origin":[0.0,0.0,0.0],"z_position":64.912333333329997e-3}
-        
-        self._gs = Source(photometric_band, mag=mag, zenith=zenith, azimuth=azimuth,
+
+        self._gs = Source(photometric_band, magnitude=mag, zenith=zenith, azimuth=azimuth,
             rays_box_sampling=self._nPx, rays_box_size=rays_box_size, rays_origin=[0,0,25], fwhm=fwhm)
 
         self.__WFphase = ascupy(self._gs.wavefront.phase)

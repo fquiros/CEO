@@ -21,7 +21,7 @@ def dm292_actmap():
     return actmap
 
 
-def show_dm292(comvec, fig=None, ax=None):
+def show_dm292(comvec, fig=None, ax=None, title=None, clb_label=None):
     """
     Show a command vector to the DM292 as a 2D map.
     Note: actuator #1 is at the top-right corner to match actuator mapping in WFPT exit pupil.
@@ -41,6 +41,10 @@ def show_dm292(comvec, fig=None, ax=None):
     ax.grid(alpha=0.5)
     fig.gca().invert_xaxis()
 
+    if title is not None:
+        ax.set_title(title)
+    if clb_label is not None:
+        clb.set_label(clb_label)
 
 def show_wavefront(opd, fig=None, ax=None, clb_label=None, title=None):
     """
@@ -113,6 +117,6 @@ def show_DFS_data(data, fig=None, ax=None):
         for k in range(12):
             (ax.ravel())[k].imshow(data[:,:,k], cmap=plt.cm.gist_earth_r, origin='lower', interpolation='None')
             (ax.ravel())[k].autoscale(False)
-            (ax.ravel())[k].set_title('%d'%(k+1), fontsize=12)
+            (ax.ravel())[k].set_title('%d'%(k), fontsize=12)
             (ax.ravel())[k].axis('off')
     fig.tight_layout()

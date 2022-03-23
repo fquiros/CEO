@@ -21,7 +21,7 @@ from .sensors import PyramidWFS as Pyramid
 from .sensors import DispersedFringeSensor, IdealSegmentPistonSensor, PhaseProjectionSensor, HolographicDFS
 from .zemax import ZMX, raytrace
 from .wfpt import wfpt_testbed, wfpt_source, wfpt_sh48, wfpt_dfs, wfpt_visulib
-#from .wfpt import wfpt_simul
+from .wfpt import wfpt_simul
 from IPython.display import Markdown, display
 def sweetcheat():
     def printmd(string):
