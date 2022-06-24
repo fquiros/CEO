@@ -36,8 +36,9 @@ class wfpt_simul:
 
         self.shs_band = 'R+I'
         self.shs_mag = shs_mag
+        fudged_shs_mag = shs_mag - 6.26 # needed to simulate the right amount of detected photons
         self.shs_src =  wfpt_source(self.shs_band, self.shs_nPx, self.shs_L, 
-                                mag=self.shs_mag, zenith=src_zen, azimuth=src_azi)
+                                mag=fudged_shs_mag, zenith=src_zen, azimuth=src_azi)
         self.shs = wfpt_sh48(N_SIDE_LENSLET=N_SIDE_LENSLET, N_PX_LENSLET=N_PX_LENSLET, d=LENSLET_SIZE,
                DFT_osf=DFT_osf, N_PX_IMAGE=N_PX_IMAGE, BIN_IMAGE=BIN_IMAGE)
 
@@ -55,10 +56,12 @@ class wfpt_simul:
         self.dfs_L = 27.41 #m
         self.dfs_nPx = 481 #pixels across L
         self.dfs_mag = dfs_mag
+        fudged_dfs_mag = dfs_mag - 6.26 # needed to simulate the right amount of detected photons
+
         #J_bkgd_mag = 16.2 # J-band sky bkgd (mag/arcsec^2); Tech Note GMT-02274, rev 2.4
         #J_e0 = 1.88e12    # ph/s in J band over the GMT pupil
         self.dfs_src = wfpt_source(self.dfs_band, self.dfs_nPx, self.dfs_L, 
-                                mag=self.dfs_mag, zenith=src_zen, azimuth=src_azi)
+                                mag=fudged_dfs_mag, zenith=src_zen, azimuth=src_azi)
         self.dfs = wfpt_dfs(self.dfs_src)
 
  

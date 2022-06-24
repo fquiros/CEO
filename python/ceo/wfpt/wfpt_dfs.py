@@ -17,6 +17,11 @@ class wfpt_dfs(DispersedFringeSensor):
         sps_throughput = 0.65*0.75   # Table 3, GMT-DOC-01404
         self.camera.photoelectron_gain = sps_throughput
         
+        #--- Detector noise parameters:
+        self.camera.nBackgroundPhoton = 0.0
+        self.camera.readOutNoiseRms = 1.0
+        self.camera.noiseFactor = 1.0
+        
         self.INIT_ALL_ATTRIBUTES = True
     
     
@@ -33,3 +38,10 @@ class wfpt_dfs(DispersedFringeSensor):
 
     def analyze(self, src):
         super().analyze(src._gs)
+    
+    
+    def readOut(self, exposureTime):
+        super().camera.readOut(exposureTime, self.camera.readOutNoiseRms, 
+                           nBackgroundPhoton = self.camera.nBackgroundPhoton, 
+                           noiseFactor = self.camera.noiseFactor)
+ 
