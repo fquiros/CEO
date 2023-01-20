@@ -11,11 +11,11 @@ class wfpt_simul:
     A class that simulation the WFPT + Probe Zero operation.
     """
     def __init__(self, src_zen=0.0, src_azi=0.0, M2_baffle_diam=3.6, project_truss_onaxis=True,
-                shs_mag=0, dfs_mag=0):
+                shs_mag=0, dfs_mag=0, keep_segments=[1,2,3,4,5,6,7]):
 
         # ----------------- SH48 init ----------------------------
         self.shs_path = wfpt_testbed(M2_baffle_diam=M2_baffle_diam, project_truss_onaxis=project_truss_onaxis,
-                        path_to_sensor='SH')
+                        path_to_sensor='SH', keep_segments=keep_segments)
 
         #-- GMT AGWS SH48 design parameters
         D_GMT = 25.4  #  GMT pupil diameter [m]
@@ -50,7 +50,7 @@ class wfpt_simul:
 
         # ----------------- DFS init  ----------------------------
         self.dfs_path = wfpt_testbed(M2_baffle_diam=M2_baffle_diam, project_truss_onaxis=project_truss_onaxis,
-                        path_to_sensor='DFS')
+                        path_to_sensor='DFS', keep_segments=keep_segments)
         
         self.dfs_band = 'J'
         self.dfs_L = 27.41 #m

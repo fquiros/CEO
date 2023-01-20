@@ -17,16 +17,18 @@ class wfpt_testbed:
         Simulate truss shadows as when the GMT mask is installed on the WFPT. Default: True
     path_to_sensor: string, optional. Either: "SH" or "DFS"
         Ray trace over path to selected sensor. Default: "SH"
+    keep_segments: list, optional.
+        List of segments installed (incomplete pupil simulation). Default: [1,2,3,4,5,6,7]
     """
-    def __init__(self, M2_baffle_diam=3.6, project_truss_onaxis=True, path_to_sensor='SH'):
+    def __init__(self, M2_baffle_diam=3.6, project_truss_onaxis=True, path_to_sensor='SH', keep_segments=[1,2,3,4,5,6,7]):
                 
         # ---------------------------------------------
         # Load WFPT Zemax Model (SH48 path)
         here = os.path.abspath(os.path.dirname(__file__))
         if path_to_sensor == 'SH':
-            zemax_file = "wfpt-nolexitek-noadc-sh48collimator-2021-08-23.zmx"
+            zemax_file = "wfpt-nolexitek-noadc-sh48collimator-2023-01-17.zmx"
         elif path_to_sensor == 'DFS':
-            zemax_file = "wfpt-nolexitek-noadc-dfscollimator-2021-08-23.zmx"
+            zemax_file = "wfpt-nolexitek-noadc-dfscollimator-2023-01-17.zmx"
         else:
             raise ValueError("'path_to_sensor' should be either 'SH' or 'DFS'.")
 
@@ -50,7 +52,9 @@ class wfpt_testbed:
         #---- PTT arrays:
         m12_ptt = {"segment_diameter": 16e-3, "segment_distance":17.125e-3}
         self.M1_PTT = WFPT_MX(**m12_ptt)
+        self.M1_PTT.keep(keep_segments)
         self.M2_PTT = WFPT_MX(**m12_ptt)
+        self.M2_PTT.keep(keep_segments)
         
         #---- ALPAO DMs:
         
