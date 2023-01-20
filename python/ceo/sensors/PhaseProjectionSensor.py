@@ -23,12 +23,17 @@ class PhaseProjectionSensor:
         self.n_mode = (radord+1)*(radord+2)//2
         self.ZernS = ZernikeS(radord)
 
-    def calibrate(self,src):
+    def calibrate(self,src, piston_mask=None):
         """
         Calibrates the Zernike Projection Matrices and Reference OPD
         """
-        P = np.rollaxis( np.array(src.rays.piston_mask ),0,3)
-
+        if piston_mask is None:
+            my_piston_mask = src.rays.piston_mask
+        else:
+            my_piston_mask = piston_mask
+        
+        P = np.rollaxis( np.array(my_piston_mask),0,3)
+        
         ## Find center coordinates (in pixels) of each segment mask
         u = np.arange(src.n)
         v = np.arange(src.m)
