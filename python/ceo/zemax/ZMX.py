@@ -51,7 +51,12 @@ class ZemaxModel():
         for line in unix.cat(filename).split('\n'):
             line = line.split()
 
-            if len(line): getattr(self, line[0])(*line[1:])        # Call internal methods to parse lines
+            if len(line): 
+                try:
+                    getattr(self, line[0])(*line[1:])        # Call internal methods to parse lines
+                except AttributeError:
+                    print('ZemaxModel does not have attribute %s'%(line[0]))
+                    
 
         self.surfaces.append(getConic(self.current))
 
