@@ -34,10 +34,13 @@ class wfpt_simul:
         BIN_IMAGE = 3
         self.shs_nPx = N_SIDE_LENSLET * N_PX_LENSLET + 1 # pixels across sh_L
 
+        # ------ rays CS rotation required to render the correct orientation of the pupil w.r.t. SH grid
+        RAYS_ROT_ANGLE = -90-49 #deg
+
         self.shs_band = 'R+I'
         self.shs_mag = shs_mag
         fudged_shs_mag = shs_mag - 6.26 # needed to simulate the right amount of detected photons
-        self.shs_src =  wfpt_source(self.shs_band, self.shs_nPx, self.shs_L, 
+        self.shs_src =  wfpt_source(self.shs_band, self.shs_nPx, self.shs_L, rays_rot_angle = RAYS_ROT_ANGLE,
                                 mag=fudged_shs_mag, zenith=src_zen, azimuth=src_azi)
         self.shs = wfpt_sh48(N_SIDE_LENSLET=N_SIDE_LENSLET, N_PX_LENSLET=N_PX_LENSLET, d=LENSLET_SIZE,
                DFT_osf=DFT_osf, N_PX_IMAGE=N_PX_IMAGE, BIN_IMAGE=BIN_IMAGE)
@@ -52,6 +55,9 @@ class wfpt_simul:
         self.dfs_path = wfpt_testbed(M2_baffle_diam=M2_baffle_diam, project_truss_onaxis=project_truss_onaxis,
                         path_to_sensor='DFS', keep_segments=keep_segments)
         
+        # ------ rays CS rotation required to render the correct orientation of the pupil w.r.t. DFS subaps
+        RAYS_ROT_ANGLE = -90 #deg
+
         self.dfs_band = 'J'
         self.dfs_L = 27.41 #m
         self.dfs_nPx = 481 #pixels across L
@@ -60,7 +66,7 @@ class wfpt_simul:
 
         #J_bkgd_mag = 16.2 # J-band sky bkgd (mag/arcsec^2); Tech Note GMT-02274, rev 2.4
         #J_e0 = 1.88e12    # ph/s in J band over the GMT pupil
-        self.dfs_src = wfpt_source(self.dfs_band, self.dfs_nPx, self.dfs_L, 
+        self.dfs_src = wfpt_source(self.dfs_band, self.dfs_nPx, self.dfs_L, rays_rot_angle = RAYS_ROT_ANGLE,
                                 mag=fudged_dfs_mag, zenith=src_zen, azimuth=src_azi)
         self.dfs = wfpt_dfs(self.dfs_src)
 

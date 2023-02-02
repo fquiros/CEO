@@ -22,8 +22,10 @@ class wfpt_source:
         field angle of source (zen,azi) in radians. Default: (0,0).
     fwhm : float, optional
         The fwhm of the source intensity distribution in detector pixel unit (before binning), defaults to None.
+    rays_rot_angle : float, optional
+        The rays coordinate system rotation [deg] to render the correct orientation of the GMT pupil w.r.t. sensor subapertures. Default: 0.0
     """
-    def __init__(self, photometric_band, rays_box_sampling, rays_box_size, mag=0.0, zenith=0.0, azimuth=0.0, fwhm=None):
+    def __init__(self, photometric_band, rays_box_sampling, rays_box_size, mag=0.0, zenith=0.0, azimuth=0.0, fwhm=None, rays_rot_angle = 0.0):
         
         #-- WFPT / GMT optical parameters
         wfpt_entrance_pupil_diam=8.5e-3
@@ -36,6 +38,11 @@ class wfpt_source:
         x,y = np.meshgrid(u,u)
         xp = x.ravel()
         yp = y.ravel()
+
+        #--- Rotate the coordinate system of the rays bundle
+        zp = (xp + 1j * yp)*(np.exp(1j*(rays_rot_angle)*np.pi/180))
+        xp = np.real(zp).copy()
+        yp = np.imag(zp).copy()
 
         #->>>>>>TODO: compute origin (x,y,0) coordinates for a given (zenith,azimuth)
         self._rays_prms = {"x":xp,"y":yp,"origin":[0.0,0.0,0.0],"z_position":64.912333333329997e-3}
@@ -51,7 +58,8 @@ class wfpt_source:
         vv = cp.linspace(-1,1,self._nPx)*(rays_box_size/2)
         self.__xx, self.__yy = cp.meshgrid(vv,vv) # rows x cols
         outersegrad = 8.710 # separation between central and outer segments
-        seg_angle = cp.array([90, 30, 330, 270, 210, 150])*cp.pi/180 # following official LCS ordering
+        seg_angle = cp.array([180., 120., 60., 0., -60., -120.]) - float(rays_rot_angle) # following official LCS ordering
+        seg_angle *= cp.pi/180
         seg_xc, seg_yc = outersegrad*cp.cos(seg_angle), outersegrad*cp.sin(seg_angle)
         self.__xc = cp.append(seg_xc, 0)
         self.__yc = cp.append(seg_yc, 0)

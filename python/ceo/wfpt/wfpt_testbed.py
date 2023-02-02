@@ -26,16 +26,15 @@ class wfpt_testbed:
         # Load WFPT Zemax Model (SH48 path)
         here = os.path.abspath(os.path.dirname(__file__))
         if path_to_sensor == 'SH':
-            zemax_file = "wfpt-nolexitek-noadc-sh48collimator-2023-01-17.zmx"
+            zemax_file = "wfpt-nolexitek-noadc-sh48collimator-2023-01-23-pttrot.zmx"
         elif path_to_sensor == 'DFS':
-            zemax_file = "wfpt-nolexitek-noadc-dfscollimator-2023-01-17.zmx"
+            zemax_file = "wfpt-nolexitek-noadc-dfscollimator-2023-01-23-pttrot.zmx"
         else:
             raise ValueError("'path_to_sensor' should be either 'SH' or 'DFS'.")
 
         zemax_path = os.path.join(here, 'WFPT_model_data', 'zemax_models', zemax_file)
         ZmxModel = ZMX.ZemaxModel(zemax_path)
-            
-        S = ZmxModel.surfaces[1:]
+        S = ZmxModel.surfaces[1:]  #remove source surface
         GlassIndex = ZmxModel.GlassIndex
         for k in range(len(S)):
             s = S[k]
@@ -45,9 +44,10 @@ class wfpt_testbed:
                 print(k,s.material)
         [ZMX.update_material(s, GlassIndex) for s in S];
         self._S = S
+        self._PTT_DM_IDX = [26, 37, 47, 56]  # surface index of PTT and DMs (minus 1)
         
         #----------------------------------------------
-        # Initialize Active Elements (PTT and ALPA DMs)
+        # Initialize Active Elements (PTT and ALPAO DMs)
         
         #---- PTT arrays:
         m12_ptt = {"segment_diameter": 16e-3, "segment_distance":17.125e-3}
@@ -132,42 +132,42 @@ class wfpt_testbed:
             sid = None
         
         #-- 1. Ray tracing to the last surface before M1 PTT
-        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(24)];
+        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(self._PTT_DM_IDX[0])];
         
         #-- 2. Ray tracing on M1 PTT (and apply GMT mask)
         self.M1_PTT.trace(src.rays)
         if self.project_truss_onaxis == True:
             src.rays.gmt_truss_onaxis(self._scale)
         src.rays.gmt_m2_baffle(self._M2_baffle_diam, self._scale)
-        idx = 24
+        idx = self._PTT_DM_IDX[0]
         raytrace.bounceoff(src.rays, self._S, idx, xyz, klm, sid)
 
         #-- 3. Ray tracing to the last surface before M2 PTT
-        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(25,33)];
+        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(self._PTT_DM_IDX[0]+1,self._PTT_DM_IDX[1])];
 
         #-- 4. Ray tracing on M2 PTT
         self.M2_PTT.trace(src.rays)
-        idx = 33
+        idx = self._PTT_DM_IDX[1]
         raytrace.bounceoff(src.rays, self._S, idx, xyz, klm, sid)
 
         #-- 5. Ray tracing to the last surface before M1 DM
-        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(34,42)];
+        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(self._PTT_DM_IDX[1]+1,self._PTT_DM_IDX[2])];
         
         #-- 6. Ray tracing on M1 DM
         self.M1_DM.trace(src.rays)
-        idx = 42
+        idx = self._PTT_DM_IDX[2]
         raytrace.bounceoff(src.rays, self._S, idx, xyz, klm, sid)       
 
         #-- 7. Ray tracing to the last surface before M2 DM
-        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(43,51)];
+        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(self._PTT_DM_IDX[2]+1,self._PTT_DM_IDX[3])];
 
         #-- 8. Ray tracing on M2 DM
         self.M2_DM.trace(src.rays)
-        idx = 51
+        idx = self._PTT_DM_IDX[3]
         raytrace.bounceoff(src.rays, self._S, idx, xyz, klm, sid)
             
         #-- 9. Ray tracing to the very last surface
-        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(52,len(self._S))];
+        [raytrace.raytrace(src.rays, src.wavelength, self._S, k+1, xyz, klm, sid) for k in range(self._PTT_DM_IDX[3]+1,len(self._S))];
         
         if keep_rays_for_plot == True:
             self.rays_data=[xyz,klm,sid]
