@@ -46,6 +46,13 @@ class wfpt_sh48(ShackHartmann):
                                nBackgroundPhoton = self.camera.nBackgroundPhoton, 
                                noiseFactor = self.camera.noiseFactor)
     
+    def get_measurement(self):
+        slopes_vector = super().get_measurement()
+        #-- Order slopes to follow convention [sx,sy]
+        sy = slopes_vector[0:self.n_valid_lenslet]
+        sx = slopes_vector[self.n_valid_lenslet:]
+        return np.concatenate((sx,sy))
+
     @property
     def valid_lenslet_mask(self):
         return self.__valid_lenslet_mask
