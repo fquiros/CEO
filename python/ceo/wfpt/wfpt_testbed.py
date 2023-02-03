@@ -76,9 +76,9 @@ class wfpt_testbed:
             os.symlink(os.path.join(ALPAO_IFs_path,'ALPAO_BAX449.ceo'), 
                             os.path.join(gmtMirrors_path, 'ALPAO_BAX449.ceo'))    
         
-        m1_dm = {"segment_diameter": 26.5e-3, "segment_id":7, "mirror_modes":"ALPAO_BAX450", "N_MODE":292}
+        m1_dm = {"segment_diameter": 26.5e-3, "segment_id":7, "mirror_modes":"ALPAO_BAX449", "N_MODE":292}
         self.M1_DM = WFPT_MX(**m1_dm)
-        m2_dm = {"segment_diameter": 26.5e-3, "segment_id":7, "mirror_modes":"ALPAO_BAX449", "N_MODE":292}        
+        m2_dm = {"segment_diameter": 26.5e-3, "segment_id":7, "mirror_modes":"ALPAO_BAX450", "N_MODE":292}
         self.M2_DM = WFPT_MX(**m2_dm)
        
         #----------------------------------------------
