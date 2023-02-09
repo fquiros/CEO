@@ -218,7 +218,7 @@ class wfpt_testbed:
         self.M2_DM.modes.reset()
         
     
-    def calibrate(self, wfs, src, mirror=None, mode=None, stroke=None, first_mode=0, last_mode=None):
+    def calibrate(self, wfs, src, mirror=None, mode=None, stroke=None, mode_list=None):
         """
         Calibrate the different degrees of freedom of the  mirrors
 
@@ -237,6 +237,8 @@ class wfpt_testbed:
             for MOUNT: "pointing"
         stroke : float
             The amplitude of the motion
+        mode_list : list
+            Subset of actuators specified in a list to calibrate (applicable to DMs only).
         """
         
         def M1_DM_zonal_update(_stroke_):
@@ -267,10 +269,14 @@ class wfpt_testbed:
         
         if mirror=="M1":
             if mode=="actuators":
-                n_mode = self.M1_DM.modes.n_mode
+                if mode_list is None:
+                    n_mode = self.M1_DM.modes.n_mode
+                    mode_list = range(n_mode)
+                else:
+                    n_mode = len(mode_list)
                 D = np.zeros((wfs.get_measurement_size(),n_mode))
                 idx = 0
-                for kAct in range(n_mode):
+                for kAct in mode_list:
                     sys.stdout.write("%d "%(kAct))
                     D[:,idx] = np.ravel( pushpull( M1_DM_zonal_update ) )
                     idx += 1
@@ -304,10 +310,14 @@ class wfpt_testbed:
 
         if mirror=="M2":
             if mode=="actuators":
-                n_mode = self.M2_DM.modes.n_mode
+                if mode_list is None:
+                    n_mode = self.M2_DM.modes.n_mode
+                    mode_list = range(n_mode)
+                else:
+                    n_mode = len(mode_list)
                 D = np.zeros((wfs.get_measurement_size(),n_mode))
                 idx = 0
-                for kAct in range(n_mode):
+                for kAct in mode_list:
                     sys.stdout.write("%d "%(kAct))
                     D[:,idx] = np.ravel( pushpull( M2_DM_zonal_update ) )
                     idx += 1
