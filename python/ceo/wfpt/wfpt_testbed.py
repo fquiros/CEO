@@ -173,7 +173,35 @@ class wfpt_testbed:
             self.rays_data=[xyz,klm,sid]
             
         src.applyOPD()
+
+
+    def dm_grid_alignment(self, mirror=None, dm_x_shift=0.0, dm_y_shift=0.0, dm_z_rot=0.0):
+        """
+        Adjust the alignment of the DM grid. All adjustments defined in the DM grid coordinate system.
         
+        Parameters:
+        -----------
+        mirror : string
+            Either "M1" or "M2"
+        dm_x_shift : float
+            Shift in the x-axis (expressed as fraction of pupil size). Default: 0.0
+        dm_y_shift : float
+            Shift in the y-axis (expressed as fraction of pupil size). Default: 0.0
+        dm_z_rot : float
+            Rotation about the z-axis (radians). Default: 0.0
+        """
+        #-- Apply a shift to the DM grid
+        assert mirror in ['M1', 'M2'], '"mirror" must be either "M1" or "M2"'
+        if mirror == 'M1':
+            DM = self.M1_DM
+        elif mirror == 'M2':
+            DM = self.M2_DM
+            
+        DM.motion_CS.origin[-1,0] = dm_x_shift * DM.D_clear
+        DM.motion_CS.origin[-1,1] = dm_y_shift * DM.D_clear
+        DM.motion_CS.euler_angles[-1,2] = dm_z_rot
+        DM.motion_CS.update()
+
 
     @property
     def state(self):
