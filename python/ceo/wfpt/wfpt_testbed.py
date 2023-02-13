@@ -246,7 +246,7 @@ class wfpt_testbed:
         self.M2_DM.modes.reset()
         
     
-    def calibrate(self, wfs, src, mirror=None, mode=None, stroke=None, mode_list=None):
+    def calibrate(self, wfs, src, mirror=None, mode=None, stroke=None, mode_list=None, silent=False):
         """
         Calibrate the different degrees of freedom of the  mirrors
 
@@ -267,6 +267,8 @@ class wfpt_testbed:
             The amplitude of the motion
         mode_list : list
             Subset of actuators specified in a list to calibrate (applicable to DMs only).
+        silent : bool
+            If True, do not printout calibration status
         """
         
         def M1_DM_zonal_update(_stroke_):
@@ -293,7 +295,8 @@ class wfpt_testbed:
             return 0.5*(s_push-s_pull)/stroke        
         
         #-------- Start of main program -------------------
-        sys.stdout.write("___ %s ___ (%s)\n"%(mirror,mode))
+        if not silent:
+            sys.stdout.write("___ %s ___ (%s)\n"%(mirror,mode))
         
         if mirror=="M1":
             if mode=="actuators":
@@ -305,36 +308,44 @@ class wfpt_testbed:
                 D = np.zeros((wfs.get_measurement_size(),n_mode))
                 idx = 0
                 for kAct in mode_list:
-                    sys.stdout.write("%d "%(kAct))
+                    if not silent:
+                        sys.stdout.write("%d "%(kAct))
                     D[:,idx] = np.ravel( pushpull( M1_DM_zonal_update ) )
                     idx += 1
-                sys.stdout.write("\n")
+                if not silent:
+                    sys.stdout.write("\n")
                 
             if mode=="segment tip-tilt":
                 D = np.zeros((wfs.get_measurement_size(),2*7))
                 idx = 0
                 Rx = lambda x : self.M1_PTT.update(origin=[0,0,0],euler_angles=[-x,0,0],idx=kSeg)
                 Ry = lambda x : self.M1_PTT.update(origin=[0,0,0],euler_angles=[0,-x,0],idx=kSeg)
-                sys.stdout.write("Segment #:")
+                if not silent:
+                    sys.stdout.write("Segment #:")
                 for kSeg in range(1,8):
-                    sys.stdout.write("%d "%kSeg)
+                    if not silent:
+                        sys.stdout.write("%d "%kSeg)
                     D[:,idx] = pushpull( Rx )
                     idx += 1
                     D[:,idx] = pushpull( Ry )
                     idx += 1
-                sys.stdout.write("\n")                
+                if not silent:
+                    sys.stdout.write("\n")
 
             if mode=="segment piston":
                 n_mode = 7
                 D = np.zeros((wfs.get_measurement_size(),n_mode))
                 idx = 0
                 Tz = lambda x : self.M1_PTT.update(origin=[0,0,-x],euler_angles=[0,0,0],idx=kSeg)
-                sys.stdout.write("Segment #:")
+                if not silent:
+                    sys.stdout.write("Segment #:")
                 for kSeg in range(1,8):
-                    sys.stdout.write("%d "%kSeg)
+                    if not silent:
+                        sys.stdout.write("%d "%kSeg)
                     D[:,idx] = pushpull( Tz )
                     idx += 1
-                sys.stdout.write("\n")
+                if not silent:
+                    sys.stdout.write("\n")
 
         if mirror=="M2":
             if mode=="actuators":
@@ -346,37 +357,46 @@ class wfpt_testbed:
                 D = np.zeros((wfs.get_measurement_size(),n_mode))
                 idx = 0
                 for kAct in mode_list:
-                    sys.stdout.write("%d "%(kAct))
+                    if not silent:
+                        sys.stdout.write("%d "%(kAct))
                     D[:,idx] = np.ravel( pushpull( M2_DM_zonal_update ) )
                     idx += 1
-                sys.stdout.write("\n")
+                if not silent:
+                    sys.stdout.write("\n")
 
             if mode=="segment tip-tilt":
                 D = np.zeros((wfs.get_measurement_size(),2*7))
                 idx = 0
                 Rx = lambda x : self.M2_PTT.update(origin=[0,0,0],euler_angles=[x,0,0],idx=kSeg)
                 Ry = lambda x : self.M2_PTT.update(origin=[0,0,0],euler_angles=[0,x,0],idx=kSeg)
-                sys.stdout.write("Segment #:")
+                if not silent:
+                    sys.stdout.write("Segment #:")
                 for kSeg in range(1,8):
-                    sys.stdout.write("%d "%kSeg)
+                    if not silent:
+                        sys.stdout.write("%d "%kSeg)
                     D[:,idx] = pushpull( Rx )
                     idx += 1
                     D[:,idx] = pushpull( Ry )
                     idx += 1
-                sys.stdout.write("\n")
+                if not silent:
+                    sys.stdout.write("\n")
 
             if mode=="segment piston":
                 n_mode = 7
                 D = np.zeros((wfs.get_measurement_size(),n_mode))
                 idx = 0
                 Tz = lambda x : self.M2_PTT.update(origin=[0,0,x],euler_angles=[0,0,0],idx=kSeg)
-                sys.stdout.write("Segment #:")
+                if not silent:
+                    sys.stdout.write("Segment #:")
                 for kSeg in range(1,8):
-                    sys.stdout.write("%d "%kSeg)
+                    if not silent:
+                        sys.stdout.write("%d "%kSeg)
                     D[:,idx] = pushpull( Tz )
                     idx += 1
-                sys.stdout.write("\n")
-        sys.stdout.write("------------\n")
+                if not silent:
+                    sys.stdout.write("\n")
+        if not silent:
+            sys.stdout.write("------------\n")
         return D
 
 
