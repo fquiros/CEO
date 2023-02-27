@@ -105,6 +105,21 @@ def show_SH_slopes(sx2d, sy2d, fig=None, ax=None, title=None, clb_label=None):
         ax.set_title(title)
         
 
+def show_SH_quiver(sx2d, sy2d, scale=1, fig=None, ax=None, title=None):
+    """
+    Show SH slopes as quiver plot
+    """
+    if ax is None:
+        fig, ax = plt.subplots()
+        fig.set_size_inches((6,6))
+        fig.dpi=150
+    
+    quiv = ax.quiver(sx2d, sy2d, pivot='mid', scale=scale)
+    ax.axis('equal')
+    if title is not None:
+        ax.set_title(title)
+
+    
 def show_DFS_data(data, fig=None, ax=None):
     """
     Show DFS data (fringes, fftlets) passed as a data cube.
