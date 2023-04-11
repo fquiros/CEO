@@ -23,7 +23,7 @@ class wfpt_source:
     fwhm : float, optional
         The fwhm of the source intensity distribution in detector pixel unit (before binning), defaults to None.
     rays_rot_angle : float, optional
-        The rays coordinate system rotation [deg] to render the correct orientation of the GMT pupil w.r.t. sensor subapertures. Default: 0.0
+        The rays coordinate system rotation [deg] to render the correct orientation of the GMT pupil w.r.t. sensor subapertures. Default: 0.0 [degrees]
     """
     def __init__(self, photometric_band, rays_box_sampling, rays_box_size, mag=0.0, zenith=0.0, azimuth=0.0, fwhm=None, rays_rot_angle = 0.0):
         
@@ -119,7 +119,7 @@ class wfpt_source:
     def piston_mask(self):
         xx = self.__xx * self.__pupmask
         yy = self.__yy * self.__pupmask
-        Dseg = 8.370 # segment diameter (a bit oversized)
+        Dseg = 8.40 # segment diameter (a bit oversized)
         return [(((xx-self.__xc[idx])**2 + (yy-self.__yc[idx])**2 <= (Dseg/2)**2) * 
                  self.__pupmask.astype('bool')).ravel() for idx in range(7)]
 
