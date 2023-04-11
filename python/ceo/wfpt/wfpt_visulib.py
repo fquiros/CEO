@@ -39,7 +39,7 @@ def show_dm292(comvec, fig=None, ax=None, title=None, clb_label=None):
     ax.set_xticklabels([])
     ax.set_yticklabels([])
     ax.grid(alpha=0.5)
-    fig.gca().invert_xaxis()
+    ax.axes.invert_xaxis()
 
     if title is not None:
         ax.set_title(title)
