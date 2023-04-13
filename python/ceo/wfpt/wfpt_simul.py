@@ -48,7 +48,7 @@ class wfpt_simul:
         wfs_pxscl = self.shs_src.wavelength * BIN_IMAGE / (DFT_osf * LENSLET_SIZE) * constants.RAD2ARCSEC
         print("SH48 pixel scale: %0.3f arcsec"%wfs_pxscl)
         
-        self.shs_src.fwhm = DFT_osf * BIN_IMAGE #To sample at Shannon the sub-aperture DL spot.
+        self.shs_src.fwhm = 2 * BIN_IMAGE #To sample at Shannon the sub-aperture DL spot.
         self.shs_thr = 0.65 #illumination threshold for valid sub-aperture identification.
 
         # ----------------- DFS init  ----------------------------
@@ -56,7 +56,7 @@ class wfpt_simul:
                         path_to_sensor='DFS', keep_segments=keep_segments)
         
         # ------ rays CS rotation required to render the correct orientation of the pupil w.r.t. DFS subaps
-        RAYS_ROT_ANGLE = -90 #deg
+        RAYS_ROT_ANGLE = 90 #deg
 
         self.dfs_band = 'J'
         self.dfs_L = 27.41 #m
