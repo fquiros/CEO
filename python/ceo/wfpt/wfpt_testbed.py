@@ -2,7 +2,7 @@ from ceo import ZMX, raytrace, WFPT_MX, Transform_to_R, Transform_to_S
 import numpy as np
 import os
 import sys
-import copy
+from ceo.wfpt import wfpt_state
 
 
 class wfpt_testbed:
@@ -398,41 +398,3 @@ class wfpt_testbed:
         if not silent:
             sys.stdout.write("------------\n")
         return D
-
-
-class wfpt_state:
-    """
-    A class that represents a WFPT state vector.
-
-    Parameters
-    ----------
-    state_template : dict
-        Dictionary that defines the state vector. It should have the following structure:
-        state_template = {'mirror1': {'dof1': np.array(<shape1>), 'dof2': np.array(<shape2>), ...}, ...}
-    """
-    def __init__(self, state_template):
-        if type(state_template) is not dict:
-            raise TypeError('state_template must be a dictionary.')
-        self.state = copy.deepcopy(state_template)
-
-
-    #================= State vector arithmetics ====================
-    def __add__(self, other_wfpt_state):
-        sum_state = copy.deepcopy(self.state)
-        for mirror in sum_state:
-            for dof in sum_state[mirror]:
-                sum_state[mirror][dof] += other_wfpt_state.state[mirror][dof]
-        return wfpt_state(sum_state)
-
-    def __sub__(self, other_wfpt_state):
-        sum_state = copy.deepcopy(self.state)
-        for mirror in sum_state:
-            for dof in sum_state[mirror]:
-                sum_state[mirror][dof] -= other_wfpt_state.state[mirror][dof]
-        return wfpt_state(sum_state)
-
-    def __str__(self):
-        return str(self.state)
-
-    def __getitem__(self, key):
-        return self.state[key]
