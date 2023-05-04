@@ -4,7 +4,9 @@ from ceo.wfpt import wfpt_source
 from ceo.wfpt import wfpt_sh48
 from ceo.wfpt import wfpt_dfs
 from ceo.wfpt import wfpt_visulib as visu
+from ceo.wfpt import wfpt_utilities
 import numpy as np
+import os
 
 class wfpt_simul:
     """
@@ -193,8 +195,119 @@ class wfpt_simul:
         if subtract_ref_wf==True:
             opd -= src.reference_wavefront        
         return opd*mask
-    
-    
+
+
+    def influence_matrix(self, path='SH', mirror=None, mode=None, stroke=None):
+        """
+        Get the influence matrix for a selected set of DoFs.
+
+        Parameters:
+        -----------
+        path : string, optional
+            selected path. Either {'SH', 'DFS'}. Default: 'SH'
+        mirror : string
+            The mirror label: eiher "M1" or "M2"
+        mode : string
+            The degrees of freedom: either "segment piston", "segment tip-tilt", or "actuators".
+        stroke : float
+            The amplitude of the motion
+        """
+        assert mirror in ['M1', 'M2'], '"mirror" must be either "M1" or "M2"'
+
+        #---- Select device to poke
+        if mode == "actuators":
+            device = mirror+'_DM'
+        else:
+            device = mirror+'_PTT'
+
+        #---- Select path to use to get exit pupil wavefront.
+        if path=='SH':
+            _path_ = self.shs_path
+            _src_ = self.shs_src
+        elif path=='DFS':
+            _path_ = self.dfs_path
+            _src_ = self.dfs_src
+
+        #---- Retrieve GMT mask
+        self.reset()
+        _path_.propagate(_src_)
+        GMTmask = _src_._gs.amplitude.host().astype('bool')
+        nmask = np.sum(GMTmask)
+        masktemp = GMTmask.copy() #--> for vignetting check
+        segmask = np.array([vec.get() for vec in _src_.piston_mask])
+
+        #---- Retrieve IFmat from file if available
+        prefix = device
+        if mode == 'segment piston':
+            prefix += '_SPP'
+        elif mode == 'segment tip-tilt':
+            prefix += '_sTT'
+        IFmat_fullname = wfpt_utilities.influence_matrix_filename(prefix, _src_._nPx,
+                                        _path_._M2_baffle_diam, _path_.project_truss_onaxis)
+        if os.path.isfile(IFmat_fullname):
+            print("Restoring %s IFmat from file: %s"%(device, os.path.basename(IFmat_fullname)))
+            with np.load(IFmat_fullname) as data:
+                IFmat = data['IFmat']
+                saved_GMTmask = data['GMTmask']
+            if np.sum(np.logical_xor(GMTmask, saved_GMTmask)) > 0:
+                raise Exception("Mask used in saved IFmat is different from current mask!")
+
+        #--- Compute and save the IFmat
+        else:
+            if mode == "segment piston":
+                print("Computing %s sPP influence matrix...."%device)
+                n_mode = 7
+                IFmat = np.zeros((nmask, n_mode))
+                for jj in range(n_mode):
+                    self.reset()
+                    state = _path_.state
+                    state[device]['segment piston'][jj] = stroke
+                    _path_.update(state)
+                    _path_.propagate(_src_)
+                    masktemp *= _src_._gs.amplitude.host().astype('bool')
+                    IFmat[:,jj] = (self.opd(path=path))[GMTmask] / stroke
+
+            elif mode == "segment tip-tilt":
+                #---> order: Rx_IFmat, Ry_IFmat
+                print("Computing %s sTT influence matrix...."%device)
+                n_mode = 14
+                IFmat = np.zeros((nmask, n_mode))
+                for jj in range(n_mode):
+                    self.reset()
+                    state = _path_.state
+                    state[device]['segment tip-tilt'][np.mod(jj,7), jj//7] = stroke
+                    _path_.update(state)
+                    _path_.propagate(_src_)
+                    masktemp *= _src_._gs.amplitude.host().astype('bool')
+                    IFmat[:,jj] = (self.opd(path=path))[GMTmask] / stroke
+
+            elif mode == "actuators":
+                print("Computing %s influence matrix...."%device)
+                n_mode = 292
+                IFmat = np.zeros((nmask, n_mode))
+                IF_peak = np.zeros(n_mode)
+                for jj in range(n_mode):
+                    self.reset()
+                    state = _path_.state
+                    state[device]['actuators'][jj] = stroke
+                    _path_.update(state)
+                    _path_.propagate(_src_)
+                    masktemp *= _src_._gs.amplitude.host().astype('bool')
+                    IFmat[:,jj] = (self.opd(path=path))[GMTmask] / stroke
+                    IF_peak[jj] = np.max(np.abs(IFmat[:,jj]))
+
+            if np.sum(np.logical_xor(GMTmask, masktemp)) > 0:
+                raise Exception("Vignetting occurred during IFmat acquisition. Reduce stroke amplitude.")
+
+            tosave = dict(IFmat=IFmat, GMTmask=GMTmask, segmask=segmask)
+            if mode == "actuators":
+                tosave['IF_peak'] = IF_peak
+            np.savez(IFmat_fullname, **tosave)
+            print("IFmat saved to file %s"%IFmat_fullname)
+
+        return IFmat
+
+
     def dm_grid_alignment(self, mirror=None, dm_x_shift=0.0, dm_y_shift=0.0, dm_z_rot=0.0):
         """
         Adjust the alignment of the DM grid. All adjustments defined in the DM grid coordinate system.
@@ -273,6 +386,3 @@ class wfpt_simul:
         
         visu.show_rays(xyz, klm, sid, vig, fig=fig, ax=ax, rays_color=rays_color,
                        label_surf_from=label_surf_from)
-    
-       
-        
