@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import errno
 
 def influence_matrix_filename(device, nPx, M2_baffle_diam, project_truss_onaxis):
     """
@@ -19,3 +20,34 @@ def influence_matrix_filename(device, nPx, M2_baffle_diam, project_truss_onaxis)
                         'wTruss' if project_truss_onaxis else 'woTruss')
     here = os.path.abspath(os.path.dirname(__file__))
     return os.path.join(here, 'WFPT_model_data', 'influence_matrices', DM_IFmat_file)
+
+
+def get_dm_valid_actuators(dm_valid_acts_file):
+    """
+    Loads DM valid actuators data file.
+
+    Parameters:
+    -----------
+    dm_valid_acts_file : string
+        Name of file that contains the DM valid actuators.     
+    """
+    here = os.path.abspath(os.path.dirname(__file__))
+    fname = os.path.join(here, 'WFPT_model_data', 'dm_valid_actuators', dm_valid_acts_file)
+    if os.path.isfile(fname):
+        print("Restoring valid DM actuators from file: %s"%os.path.basename(fname))
+        mydict = {}
+        with np.load(fname) as data:
+            for key in data.keys():
+                try:
+                    mydict[key] = data[key].item()
+                except:
+                    mydict[key] = data[key]
+        mydict['filename'] = dm_valid_acts_file
+    else:
+        raise FileNotFoundError(
+            errno.ENOENT, os.strerror(errno.ENOENT), fname)
+    return mydict
+
+
+
+        

@@ -1,0 +1,238 @@
+from ceo import PhaseProjectionSensor
+from ceo.wfpt import wfpt_simul, wfpt_utilities
+import numpy as np
+import os
+
+class wfpt_zernike_modes_creation:
+    """
+    A class to produce segment Zernike modes fitted by the WFPT M1 or M2 actuators.
+    
+    Parameters:
+    -----------
+    M2_baffle_diam : float
+        Diameter of M2 baffle [m]. Default: 3.6
+    project_truss_onaxis : bool
+        If True, simulates truss shadows. Default: True
+    path : string
+        WFPT path to retrieve wavefront in exit pupil. Either "SH" or "DFS". Default: 'SH'
+    """
+    def __init__(self, M2_baffle_diam=3.6, project_truss_onaxis=True, path='SH'):
+        assert path in ['SH', 'DFS'], '"path" must be either "SH" or "DFS"'
+        
+        # ---- Initialize the WFPT model
+        self.wfpt = wfpt_simul(M2_baffle_diam=M2_baffle_diam, project_truss_onaxis=project_truss_onaxis)
+        self.wfpt.calibrate_sensors(keep_rays_for_plot=False)
+        
+        # ---- Retrieve path and source to use
+        self._path_ = path
+        if path=='SH':
+            self.path = self.wfpt.shs_path
+            self.src = self.wfpt.shs_src
+        elif path=='DFS':
+            self.path = self.wfpt.dfs_path
+            self.src = self.wfpt.dfs_src
+        
+        #---- Retrieve GMT mask and segment masks
+        self.wfpt.reset()
+        self.path.propagate(self.src)
+        self.GMTmask = self.src._gs.amplitude.host().astype('bool')
+        self.nmask = np.sum(self.GMTmask)
+        self.segmask = np.array([vec.get() for vec in self.src.piston_mask])
+        self.npseg = np.sum(self.segmask, axis=1).astype('int')
+        
+        #---- Allocations
+        self.IFmats = {}
+        self.projMats = {}
+        self.fitZern = {}
+
+
+    def get_zernikes(self, zernikes_radial_order=4, CS_rotation=True):
+        """
+        Get theoretical segment Zernike modes in matrix form.
+        
+        Parameters:
+        -----------
+        zernike_radial_order : int
+            Last radial order of Zernikes to generate. Default: 4 (i.e. 15 Zernike modes)
+        CS_rotation : bool
+            If True, define segment Zernikes following the GMT segment LCS system.
+        """
+        zsensor = PhaseProjectionSensor(zernikes_radial_order)
+        
+        #---- Generate theoretical Zernike modes
+        rot_angle = (self.src._rays_rot_angle + 90) * (np.pi/180)
+        zsensor.calibrate(self.src._gs, piston_mask=[self.segmask], CS_rotation=CS_rotation, 
+                          rot_angle=rot_angle)
+        
+        #---- Re-orthonormalize zernike modes over segment pupils.
+        Zmat = np.zeros((self.nmask,zsensor.n_mode,7))
+
+        for segid in range(7):
+            Zmat1 = np.squeeze(zsensor.Zmat[:,:,segid])
+            Dmat1 = np.matmul(np.transpose(Zmat1), Zmat1) / self.npseg[segid]
+            Lmat1 = np.linalg.cholesky(Dmat1)
+            inv_Lmat1 = np.linalg.pinv(Lmat1)
+            Zmato = np.matmul(Zmat1, np.transpose(inv_Lmat1))
+            Zmat[:,:,segid] = Zmato[self.GMTmask.ravel(),:]
+        
+        self.CS_rotation = CS_rotation
+        self.Zmat = Zmat
+        print("--> Theoretical Zernikes computed successfully.")
+
+
+    def get_influence_matrices(self, mirror):
+        """
+        Get the influence matrices.
+        
+        Parameters:
+        -----------
+        mirror : string
+            Either 'M1' or 'M2'.        
+        """
+        assert mirror in ['M1', 'M2'], '"mirror" must be either "M1" or "M2"'
+        
+        self.IFmats[mirror] = \
+            {'SPP_IFmat'  : self.wfpt.influence_matrix(path=self._path_, mirror=mirror, 
+                                                mode='segment piston', stroke=1e-8),
+             'RxRy_IFmat' : self.wfpt.influence_matrix(path=self._path_, mirror=mirror, 
+                                                mode='segment tip-tilt', stroke=1e-8),
+             'DM_IFmat'   : self.wfpt.influence_matrix(path=self._path_, mirror=mirror, 
+                                                mode='actuators', stroke=0.1)}
+
+
+    def get_dm_influence_matrix(self, mirror, dm_valid_acts_file=None):
+        """
+        Get the DM influence matrix.
+        
+        Parameters:
+        -----------
+        mirror : string
+            Either 'M1' or 'M2'.
+        dm_valid_acts_file : string
+            Name of file that contains the DM valid actuators. Default: None            
+        """
+        if not mirror in self.IFmats:
+            self.get_influence_matrices(mirror)
+        
+        #--- Get the slaved DM_IFmat with only valid actuators present.
+        if not dm_valid_acts_file is None:
+            self.IFmats[mirror]['dm_valid_actuators'] = wfpt_utilities.get_dm_valid_actuators(dm_valid_acts_file)
+            DMmat = self.IFmats[mirror]['DM_IFmat'] @ self.IFmats[mirror]['dm_valid_actuators']['slaveMat']
+            DMmat = DMmat[:, self.IFmats[mirror]['dm_valid_actuators']['valid_acts']]
+        else:
+            DMmat = self.IFmats[mirror]['DM_IFmat']
+        
+        return DMmat
+
+
+    def get_merged_influence_matrix(self, mirror, dm_valid_acts_file=None):
+        """
+        Get the merged influence matrix.
+        
+        Parameters:
+        -----------
+        mirror : string
+            Either 'M1' or 'M2'.
+        dm_valid_acts_file : string
+            Name of file that contains the DM valid actuators. Default: None            
+        """
+        if not mirror in self.IFmats:
+            self.get_influence_matrices(mirror)
+        
+        #--- Get the slaved DM_IFmat with only valid actuators present.
+        DMmat = self.get_dm_influence_matrix(mirror, dm_valid_acts_file)
+        
+        #--- Merge PTT SPP and STT Influence matrcies
+        PTTmat = np.concatenate((self.IFmats[mirror]['SPP_IFmat'], self.IFmats[mirror]['RxRy_IFmat']), axis=1)
+        
+        #--- Norm-weighted merged IFmat
+        DMmat_norm  = np.linalg.norm(DMmat)
+        PTTmat_norm = np.linalg.norm(PTTmat)
+        mergedIFmat = np.concatenate((PTTmat/PTTmat_norm, DMmat/DMmat_norm), axis=1)
+        self.IFmats[mirror]['mergedIFmat'] = mergedIFmat
+        self.IFmats[mirror]['mergedIFmat_norms'] = {'DMmat_norm': DMmat_norm, 'PTTmat_norm': PTTmat_norm}
+        print("--> Merged IFmat computed successfully.")
+
+
+    def get_projection_matrix(self, mirror, dm_valid_acts_file=None):
+        """
+        Computes the matrix that projects segment Zernike modes onto the WFPT active mirrors.
+        
+        Parameters:
+        -----------
+        mirror : string
+            Either 'M1' or 'M2'.
+        dm_valid_acts_file : string
+            Name of file that contains the DM valid actuators. Default: None
+        """
+        self.get_merged_influence_matrix(mirror, dm_valid_acts_file)
+        IFmat = self.IFmats[mirror]['mergedIFmat']
+        self.projMats[mirror] = np.linalg.pinv(IFmat)
+        print("--> Projection Matrix computed successfully.")
+
+
+    def get_fitted_zernikes(self, mirror):
+        """
+        Compute Zernike modes fitte by the WFPT active mirrors (PTT array + DM).
+        
+        Parameters:
+        -----------
+        mirror : string
+            Either 'M1' or 'M2'.
+        """
+        if not mirror in self.projMats:
+            print("No Projection matrix available. Compute it with 'get_projection_matrix()'...")
+            return
+        if not hasattr(self, 'Zmat'):
+            print("Compute theoretical segment Zernikes first using 'get_zernikes()'...")
+            return
+        
+        IFmat = self.IFmats[mirror]['mergedIFmat']
+        inv_IFmat = self.projMats[mirror]
+        ndof = inv_IFmat.shape[0]
+        nzern = self.Zmat.shape[1]
+        
+        _Zmat_M2C_ = np.zeros((ndof, nzern, 7))
+        Zmat_bf = np.zeros((self.nmask,nzern,7))
+        
+        for segid in range(7):
+            _Zmat_M2C_[:,:,segid] = inv_IFmat @ self.Zmat[:,:,segid]
+            Zmat_bf[:,:,segid] = IFmat @ _Zmat_M2C_[:,:,segid]
+        
+        #--- Compute full-sized and de-normalized M2C
+        DMmat_norm  = self.IFmats[mirror]['mergedIFmat_norms']['DMmat_norm']
+        PTTmat_norm = self.IFmats[mirror]['mergedIFmat_norms']['PTTmat_norm']
+        n_valid_acts = self.IFmats[mirror]['dm_valid_actuators']['n_valid_acts']
+        valid_acts   = self.IFmats[mirror]['dm_valid_actuators']['valid_acts']
+        slaveMat     = self.IFmats[mirror]['dm_valid_actuators']['slaveMat']         
+        valid_dofs = np.concatenate( (np.ones(21).astype('bool'), valid_acts) )
+        normDiag = 1. / np.concatenate( (np.ones(21)*PTTmat_norm, np.ones(n_valid_acts)*DMmat_norm) )
+        
+        Zmat_M2C = np.zeros((21+292,nzern,7))
+        for segid in range(7):
+            Zmat_M2C[valid_dofs,:,segid] = np.diag(normDiag) @ _Zmat_M2C_[:,:,segid]
+            Zmat_M2C[21:,:,segid] = slaveMat @ Zmat_M2C[21:,:,segid]
+        
+        self.fitZern[mirror] = {'M2C': Zmat_M2C, 'Zmat': Zmat_bf}
+        print("--> Fitted Zernikes computed successfully.")
+
+
+    def save_zern_m2c(self, mirror, fname):
+        """
+        Save Zernike Modes-to-commands matrix to dedicated repository in WFPT_model_data/M2C/
+        
+        Parameters:
+        -----------
+        fname : string
+            Name of M2C file.
+        """
+        here = os.path.abspath(os.path.dirname(__file__))
+        fullname = os.path.join(here, 'WFPT_model_data', 'M2C', fname)
+        
+        tosave = dict(mirror=mirror, modes_type='segment Zernikes', LCS_rotation=self.CS_rotation,
+                    dm_valid_acts_file=self.IFmats[mirror]['dm_valid_actuators']['filename'],
+                    projMat_type='merged simple LS', M2C=self.fitZern[mirror]['M2C'])
+        
+        np.savez(fullname, **tosave)
+        print("Saving to file %s"%fullname)
+        

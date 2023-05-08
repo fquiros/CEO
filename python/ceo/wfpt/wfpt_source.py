@@ -29,6 +29,7 @@ class wfpt_source:
         
         #-- WFPT / GMT optical parameters
         wfpt_entrance_pupil_diam=8.5e-3
+        self._rays_rot_angle = rays_rot_angle
         
         #-- Parameters for rays that will propagate through WFPT Zemax model
         self._D = np.double(wfpt_entrance_pupil_diam)

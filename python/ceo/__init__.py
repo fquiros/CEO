@@ -23,7 +23,7 @@ from .sensors import DispersedFringeSensor, IdealSegmentPistonSensor, PhaseProje
 from .wfsc_lib import IIRfilter, MirrorPositioner
 from .zemax import ZMX, raytrace
 from .wfpt import wfpt_testbed, wfpt_dm_act_selection, wfpt_source, wfpt_sh48, wfpt_dfs, wfpt_visulib, wfpt_utilities
-from .wfpt import wfpt_simul
+from .wfpt import wfpt_simul, wfpt_zernike_modes_creation
 from IPython.display import Markdown, display
 def sweetcheat():
     def printmd(string):
