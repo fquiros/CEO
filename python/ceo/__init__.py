@@ -20,7 +20,6 @@ from . import phaseStats
 from .sensors import CameraReadOut, SkyBackground
 from .sensors import PyramidWFS as Pyramid
 from .sensors import DispersedFringeSensor, IdealSegmentPistonSensor, PhaseProjectionSensor, HolographicDFS, BBPSF
-from .wfsc_lib import IIRfilter, MirrorPositioner
 from .zemax import ZMX, raytrace
 from .wfpt import wfpt_testbed, wfpt_dm_act_selection, wfpt_source, wfpt_sh48, wfpt_dfs, wfpt_visulib, wfpt_utilities
 from .wfpt import wfpt_simul, wfpt_zernike_modes_creation
