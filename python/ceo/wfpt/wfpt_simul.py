@@ -31,7 +31,7 @@ class wfpt_simul:
 
         #-- SH simulation parameters to realize proper pixel scale.
         N_PX_LENSLET = 16
-        DFT_osf = 2
+        DFT_osf = 2.625
         N_PX_IMAGE = 24
         BIN_IMAGE = 3
         self.shs_nPx = N_SIDE_LENSLET * N_PX_LENSLET + 1 # pixels across sh_L
