@@ -20,9 +20,10 @@ class wfpt_simul:
                         path_to_sensor='SH', keep_segments=keep_segments)
 
         #-- GMT AGWS SH48 design parameters
-        D_GMT = 25.4  #  GMT pupil diameter [m]
-        SH48_N_LENSLET = 48 # linear number of AGWS SH48 sub-apertures across GMT diameter
-        SH48_LENSLET_SIZE = D_GMT/SH48_N_LENSLET  # size of SH48 sub-aperture [m]
+        #D_GMT = 25.4  #  GMT pupil diameter [m]
+        #SH48_N_LENSLET = 48 # linear number of AGWS SH48 sub-apertures across GMT diameter
+        #SH48_LENSLET_SIZE = D_GMT/SH48_N_LENSLET  # size of SH48 sub-aperture [m]
+        SH48_LENSLET_SIZE = 0.525 # size of SH48 as built on the WFPT [m]
         
         #-- WFPT model parameters to ensure proper SH sampling of GMT pupil.
         self.shs_L = 27.31 # rays box size [m]. The GMT pupil is contained in this box. Value provided by R. Conan.
@@ -61,7 +62,8 @@ class wfpt_simul:
         RAYS_ROT_ANGLE = 90 #deg
 
         self.dfs_band = 'J'
-        self.dfs_L = 27.41 #m
+        #self.dfs_L = 27.41 #m
+        self.dfs_L = 27.1989 #m (after fine-tuning pupil. See WFPT_finetune_pixelscale.ipynb)
         self.dfs_nPx = 481 #pixels across L
         self.dfs_mag = dfs_mag
         fudged_dfs_mag = dfs_mag - 6.26 # needed to simulate the right amount of detected photons
