@@ -110,11 +110,22 @@ class wfpt_simul:
                                                    mode='segment tip-tilt', stroke=1e-5),
                 'dfs-spp': self.dfs_path.calibrate(self.dfs, self.dfs_src, mirror=mirror, 
                                                    mode='segment piston', stroke=50e-9)}
-            #-- Additional transformation matrices:
-            #IntMats[mirror].append('dfs-sig2pist': np.diag( 1 / np.max(np.abs(IntMats[mirror]['dfs-spp']), axis=1)))
-        else:
-            print("modes not recognized. sorry!")
+            
+            #-- DFS signal to SPP convertion.
+            IntMats[mirror].update({'dfs-sig2pist': np.diag( 1 / np.max(np.abs(IntMats[mirror]['dfs-spp']), axis=1))})
         
+        elif modes == 'modal':
+            IntMats[mirror] = \
+                {'sh-modes': self.shs_path.calibrate(self.shs, self.shs_src, mirror=mirror,
+                                mode='segment zernikes', stroke=100e-9, wfpt_modes=self.modal_control),
+                 'dfs-modes': self.dfs_path.calibrate(self.dfs, self.dfs_src, mirror=mirror,
+                                mode='segment zernikes', stroke=100e-9, wfpt_modes=self.modal_control)}
+            
+            #-- DFS signal to SPP convertion.
+            D_SPP_DFS = self.dfs_path.calibrate(self.dfs, self.dfs_src, mirror=mirror, silent=True,
+                                                   mode='segment piston', stroke=50e-9)
+            IntMats[mirror].update({'dfs-sig2pist': np.diag( 1 / np.max(np.abs(D_SPP_DFS), axis=1))})
+            
         return IntMats
     
     
@@ -338,6 +349,39 @@ class wfpt_simul:
             DM.motion_CS.euler_angles[-1,2] = dm_z_rot
             DM.motion_CS.update()
     
+    #========================= MODAL CONTROL ==========================
+    def set_modal_control(self,  M1_m2c_file, M2_m2c_file):
+        """
+        Set up for WFPT modal control.
+        
+        Parameters
+        ----------
+        M1_m2c_file : string
+            Name of .npz file containing the modes-to-commands matrix for M1.
+        M2_m2c_file : string
+            idem for M2
+            Note: these files should be stored in the dedicated WFPT_model_data/M2C repository.
+        """
+        from ceo.wfpt import wfpt_modes
+        self.modal_control = wfpt_modes(M1_m2c_file, M2_m2c_file)
+        self.reset()
+        self.modal_control.set_zonal_state(self.state)
+
+
+    @property
+    def modal_state(self):
+        if hasattr(self, 'modal_control'):
+            return self.modal_control.modal_state
+
+
+    def modal_update(self, modal_state):
+        """
+        Updates the position of all active mirrors using a modal state vector.
+        """
+        if hasattr(self, 'modal_control'):
+            self.modal_control.update(modal_state)
+            self.update(self.modal_control.zonal_state)
+
     
     #======================= VISUALIZATION METHODS ========================
     

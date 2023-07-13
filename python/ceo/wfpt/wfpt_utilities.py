@@ -22,19 +22,17 @@ def influence_matrix_filename(device, nPx, M2_baffle_diam, project_truss_onaxis)
     return os.path.join(here, 'WFPT_model_data', 'influence_matrices', DM_IFmat_file)
 
 
-def get_dm_valid_actuators(dm_valid_acts_file):
+def load_dictionary_from_file(fname):
     """
-    Loads DM valid actuators data file.
-
+    Load dictionary from file.
+    
     Parameters:
     -----------
-    dm_valid_acts_file : string
-        Name of file that contains the DM valid actuators.     
+    filename : string
+        Full path name to file.
     """
-    here = os.path.abspath(os.path.dirname(__file__))
-    fname = os.path.join(here, 'WFPT_model_data', 'dm_valid_actuators', dm_valid_acts_file)
     if os.path.isfile(fname):
-        print("Restoring valid DM actuators from file: %s"%os.path.basename(fname))
+        print("Restoring data from file: %s"%os.path.basename(fname))
         mydict = {}
         with np.load(fname) as data:
             for key in data.keys():
@@ -42,11 +40,26 @@ def get_dm_valid_actuators(dm_valid_acts_file):
                     mydict[key] = data[key].item()
                 except:
                     mydict[key] = data[key]
-        mydict['filename'] = dm_valid_acts_file
+        mydict['filename'] = os.path.basename(fname)
     else:
         raise FileNotFoundError(
             errno.ENOENT, os.strerror(errno.ENOENT), fname)
     return mydict
+
+
+def get_dm_valid_actuators(dm_valid_acts_file):
+    """
+    Loads DM valid actuators data file.
+
+    Parameters:
+    -----------
+    dm_valid_acts_file : string
+        Name of file that contains the DM valid actuators.
+    """
+    here = os.path.abspath(os.path.dirname(__file__))
+    fname = os.path.join(here, 'WFPT_model_data', 'dm_valid_actuators', dm_valid_acts_file)
+    return load_dictionary_from_file(fname)
+
 
 
 

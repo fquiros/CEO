@@ -246,7 +246,8 @@ class wfpt_testbed:
         self.M2_DM.modes.reset()
         
     
-    def calibrate(self, wfs, src, mirror=None, mode=None, stroke=None, mode_list=None, silent=False):
+    def calibrate(self, wfs, src, mirror=None, mode=None, stroke=None, mode_list=None, silent=False, 
+                 wfpt_modes=None):
         """
         Calibrate the different degrees of freedom of the  mirrors
 
@@ -260,8 +261,8 @@ class wfpt_testbed:
             The mirror label: eiher "M1" or "M2" ("MOUNT" is also accepted and will emulate a telescope pointing error)
         mode : string
             The degrees of freedom label
-            for M1: "global tip-tilt", "zernike", "bending modes", "Txyz", "Rxyz", "segment tip-tilt", "segment piston", actuators"
-            for M2: "global tip-tilt", "zernike", "Txyz", "Rxyz", "segment tip-tilt", "segment piston", "actuators"
+            for M1: "segment tip-tilt", "segment piston", "actuators", "segment zernikes"
+            for M2: "segment tip-tilt", "segment piston", "actuators", "segment zernikes"
             for MOUNT: "pointing"
         stroke : float
             The amplitude of the motion
@@ -269,6 +270,8 @@ class wfpt_testbed:
             Subset of actuators specified in a list to calibrate (applicable to DMs only).
         silent : bool
             If True, do not printout calibration status
+        wfpt_modes : wfpt_modes object
+            Object encapsulating WFPT modal control data (M2C, ...). Needed for "segment zernikes".
         """
         
         def M1_DM_zonal_update(_stroke_):
@@ -278,7 +281,21 @@ class wfpt_testbed:
         def M2_DM_zonal_update(_stroke_):
             self.M2_DM.modes.a[-1,kAct] = _stroke_
             self.M2_DM.modes.update()
-            
+        
+        def M1_modal_update(_stroke_):
+            wfpt_modes.reset()
+            modal_state = wfpt_modes.modal_state
+            modal_state['M1']['modes'][kSeg,kAct] = _stroke_
+            wfpt_modes.update(modal_state)
+            self.update(wfpt_modes.zonal_state)
+        
+        def M2_modal_update(_stroke_):
+            wfpt_modes.reset()
+            modal_state = wfpt_modes.modal_state
+            modal_state['M2']['modes'][kSeg,kAct] = _stroke_
+            wfpt_modes.update(modal_state)
+            self.update(wfpt_modes.zonal_state)
+        
         def pushpull(action):
             def get_slopes(stroke_sign):
                 self.reset()
@@ -347,6 +364,25 @@ class wfpt_testbed:
                 if not silent:
                     sys.stdout.write("\n")
 
+            if mode=="segment zernikes":
+                if wfpt_modes is None:
+                    raise Exception("wfpt_modes must be provided for segment zernikes calibration.")
+                
+                n_mode = wfpt_modes.M1_nmodes*7
+                D = np.zeros((wfs.get_measurement_size(),n_mode))
+                idx = 0
+                for kSeg in range(7):
+                    if not silent:
+                        sys.stdout.write("Segment #%d: \n"%(kSeg+1))
+                    for kAct in range(wfpt_modes.M1_nmodes):
+                        if not silent:
+                            sys.stdout.write("%d "%kAct)
+                        D[:,idx] = pushpull( M1_modal_update )
+                        idx += 1
+                    if not silent:
+                        sys.stdout.write("\n")
+                
+
         if mirror=="M2":
             if mode=="actuators":
                 if mode_list is None:
@@ -395,6 +431,24 @@ class wfpt_testbed:
                     idx += 1
                 if not silent:
                     sys.stdout.write("\n")
+
+            if mode=="segment zernikes":
+                if wfpt_modes is None:
+                    raise Exception("wfpt_modes must be provided for segment zernikes calibration.")
+                
+                n_mode = wfpt_modes.M2_nmodes*7
+                D = np.zeros((wfs.get_measurement_size(),n_mode))
+                idx = 0
+                for kSeg in range(7):
+                    if not silent:
+                        sys.stdout.write("Segment #%d: \n"%(kSeg+1))
+                    for kAct in range(wfpt_modes.M2_nmodes):
+                        if not silent:
+                            sys.stdout.write("%d "%kAct)
+                        D[:,idx] = pushpull( M2_modal_update )
+                        idx += 1
+                    if not silent:
+                        sys.stdout.write("\n")
         if not silent:
             sys.stdout.write("------------\n")
         return D
