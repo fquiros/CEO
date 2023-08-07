@@ -364,8 +364,6 @@ class wfpt_simul:
         """
         from ceo.wfpt import wfpt_modes
         self.modal_control = wfpt_modes(M1_m2c_file, M2_m2c_file)
-        self.reset()
-        self.modal_control.set_zonal_state(self.state)
 
 
     @property

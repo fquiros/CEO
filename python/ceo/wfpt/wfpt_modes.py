@@ -29,13 +29,20 @@ class wfpt_modes:
         #--- Create modal states
         self._M1_coeffs = np.zeros((7, self._M1_nmodes))
         self._M2_coeffs = np.zeros((7, self._M2_nmodes))
-
+        
+        #---- Define data structure of WFPT model zonal command
+        data_struct = {
+            "M1_PTT" : {
+                'segment piston' : np.zeros(7),
+                'segment tip-tilt' : np.zeros((7,2)) },
+            "M1_DM" : {'actuators' : np.zeros(292)},
+            "M2_PTT" : {
+                'segment piston' : np.zeros(7),
+                'segment tip-tilt' : np.zeros((7,2)) },
+            "M2_DM" : {'actuators' : np.zeros(292)}
+            }
+        self._wfpt_state = wfpt_state(data_struct)
     
-    def set_zonal_state(self, wfpt_state):
-        """
-        Pass on an empty WFPT state vector to stored internally the structure.
-        """
-        self._wfpt_state = wfpt_state
     
     @property
     def M1_M2C(self):
@@ -69,9 +76,9 @@ class wfpt_modes:
         self._M2_coeffs *= 0
         
     
-    def update(self, state):
+    def M1_update(self, state):
         """
-        Updates the WFPT zonal state from an input modal state.
+        Updates the WFPT M1 zonal state from an input modal state.
         """
         self._M1_coeffs = np.copy(state['M1']['modes'])
         M1_zonal_commands = np.zeros(self.M1_M2C.shape[0])
@@ -81,7 +88,12 @@ class wfpt_modes:
         self._wfpt_state['M1_PTT']['segment piston'][:] = pistvec
         self._wfpt_state['M1_PTT']['segment tip-tilt'][:] = ttvec.reshape((7,2), order='F')
         self._wfpt_state['M1_DM']['actuators'][:] = dmvec
-        
+    
+    
+    def M2_update(self, state):
+        """
+        Updates the WFPT M2 zonal state from an input modal state.
+        """
         self._M2_coeffs = np.copy(state['M2']['modes'])
         M2_zonal_commands = np.zeros(self.M2_M2C.shape[0])
         for segid in range(7):
@@ -91,3 +103,16 @@ class wfpt_modes:
         self._wfpt_state['M2_PTT']['segment tip-tilt'][:] = ttvec.reshape((7,2), order='F')
         self._wfpt_state['M2_DM']['actuators'][:] = dmvec
     
+    
+    def update(self, state):
+        """
+        Updates the WFPT M1/M2 zonals states from an input modal state.
+        
+        Parameters:
+        -----------
+        state : dict
+            modal state (see modal_state property for format.)
+        
+        """
+        self.M1_update(state)
+        self.M2_update(state)
