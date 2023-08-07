@@ -30,6 +30,16 @@ class wfpt_state:
             for dof in sum_state[mirror]:
                 sum_state[mirror][dof] -= other_wfpt_state.state[mirror][dof]
         return wfpt_state(sum_state)
+    
+    def __mul__(self, constant):
+        sum_state = copy.deepcopy(self.state)
+        for mirror in sum_state:
+            for dof in sum_state[mirror]:
+                sum_state[mirror][dof] *= constant
+        return wfpt_state(sum_state)
+    
+    def __rmul__(self, constant):
+        self.__mul__(constant)
 
     def __str__(self):
         return str(self.state)
