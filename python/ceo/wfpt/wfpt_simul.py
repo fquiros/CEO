@@ -73,6 +73,10 @@ class wfpt_simul:
         self.dfs_src = wfpt_source(self.dfs_band, self.dfs_nPx, self.dfs_L, rays_rot_angle = RAYS_ROT_ANGLE,
                                 mag=fudged_dfs_mag, zenith=src_zen, azimuth=src_azi)
         self.dfs = wfpt_dfs(self.dfs_src)
+        
+        #------- rotate DM grid by 90 deg (to match 2024 ordering of actuators)
+        self.dm_grid_alignment(mirror='M1')
+        self.dm_grid_alignment(mirror='M2')
 
  
     def calibrate_sensors(self, keep_rays_for_plot=True):
@@ -346,7 +350,7 @@ class wfpt_simul:
         for DM in DMs:
             DM.motion_CS.origin[-1,0] = dm_x_shift * DM.D_clear
             DM.motion_CS.origin[-1,1] = dm_y_shift * DM.D_clear
-            DM.motion_CS.euler_angles[-1,2] = dm_z_rot
+            DM.motion_CS.euler_angles[-1,2] = dm_z_rot + np.pi/2
             DM.motion_CS.update()
     
     #========================= MODAL CONTROL ==========================
