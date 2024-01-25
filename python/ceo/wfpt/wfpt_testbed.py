@@ -69,11 +69,11 @@ class wfpt_testbed:
         ALPAO_IFs_path = os.path.join(here, 'WFPT_model_data', 'alpao_dm_ifs')
         
         if not os.path.islink(os.path.join(gmtMirrors_path, 'ALPAO_BAX450.ceo')):
-            os.symlink(os.path.join(ALPAO_IFs_path,'ALPAO_BAX450.ceo'), 
+            os.symlink(os.path.join(ALPAO_IFs_path,'ALPAO_BAX450_rot90_flipOverX.ceo'), 
                             os.path.join(gmtMirrors_path, 'ALPAO_BAX450.ceo'))
             
         if not os.path.islink(os.path.join(gmtMirrors_path, 'ALPAO_BAX449.ceo')):
-            os.symlink(os.path.join(ALPAO_IFs_path,'ALPAO_BAX449.ceo'), 
+            os.symlink(os.path.join(ALPAO_IFs_path,'ALPAO_BAX449_rot90.ceo'), 
                             os.path.join(gmtMirrors_path, 'ALPAO_BAX449.ceo'))    
         
         m1_dm = {"segment_diameter": 26.5e-3, "segment_id":7, "mirror_modes":"ALPAO_BAX449", "N_MODE":292}
