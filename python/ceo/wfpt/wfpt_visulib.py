@@ -21,7 +21,7 @@ def dm292_actmap():
     return actmap
 
 
-def show_dm292(comvec, fig=None, ax=None, title=None, clb_label=None):
+def show_dm292(comvec, fig=None, ax=None, title=None, clb_label=None, grid_origin_bottom_left=False):
     """
     Show a command vector to the DM292 as a 2D map.
     Note: actuator #1 is at the top-right corner to match actuator mapping in WFPT exit pupil.
@@ -32,6 +32,8 @@ def show_dm292(comvec, fig=None, ax=None, title=None, clb_label=None):
 
     com2d = np.full((20,20), np.nan)
     com2d[dm292_actmap()] = comvec
+    if grid_origin_bottom_left:
+        com2d = np.rot90(com2d, k=2)
     im = ax.imshow(com2d, interpolation='None', aspect='equal')
     clb = fig.colorbar(im, ax=ax)
     ax.set_xticks(np.arange(0,20,1)-0.5)
