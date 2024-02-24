@@ -69,11 +69,11 @@ class wfpt_testbed:
         ALPAO_IFs_path = os.path.join(here, 'WFPT_model_data', 'alpao_dm_ifs')
         
         if not os.path.islink(os.path.join(gmtMirrors_path, 'ALPAO_BAX450.ceo')):
-            os.symlink(os.path.join(ALPAO_IFs_path,'ALPAO_BAX450_rot90_flipOverX.ceo'), 
+            os.symlink(os.path.join(ALPAO_IFs_path,'BAX450-IF_rev2024.ceo'), 
                             os.path.join(gmtMirrors_path, 'ALPAO_BAX450.ceo'))
             
         if not os.path.islink(os.path.join(gmtMirrors_path, 'ALPAO_BAX449.ceo')):
-            os.symlink(os.path.join(ALPAO_IFs_path,'ALPAO_BAX449_rot90.ceo'), 
+            os.symlink(os.path.join(ALPAO_IFs_path,'BAX449-IF_rev2024.ceo'), 
                             os.path.join(gmtMirrors_path, 'ALPAO_BAX449.ceo'))    
         
         m1_dm = {"segment_diameter": 26.5e-3, "segment_id":7, "mirror_modes":"ALPAO_BAX449", "N_MODE":292}
@@ -173,34 +173,6 @@ class wfpt_testbed:
             self.rays_data=[xyz,klm,sid]
             
         src.applyOPD()
-
-
-    def dm_grid_alignment(self, mirror=None, dm_x_shift=0.0, dm_y_shift=0.0, dm_z_rot=0.0):
-        """
-        Adjust the alignment of the DM grid. All adjustments defined in the DM grid coordinate system.
-        
-        Parameters:
-        -----------
-        mirror : string
-            Either "M1" or "M2"
-        dm_x_shift : float
-            Shift in the x-axis (expressed as fraction of pupil size). Default: 0.0
-        dm_y_shift : float
-            Shift in the y-axis (expressed as fraction of pupil size). Default: 0.0
-        dm_z_rot : float
-            Rotation about the z-axis (radians). Default: 0.0
-        """
-        #-- Apply a shift to the DM grid
-        assert mirror in ['M1', 'M2'], '"mirror" must be either "M1" or "M2"'
-        if mirror == 'M1':
-            DM = self.M1_DM
-        elif mirror == 'M2':
-            DM = self.M2_DM
-            
-        DM.motion_CS.origin[-1,0] = dm_x_shift * DM.D_clear
-        DM.motion_CS.origin[-1,1] = dm_y_shift * DM.D_clear
-        DM.motion_CS.euler_angles[-1,2] = dm_z_rot
-        DM.motion_CS.update()
 
 
     @property

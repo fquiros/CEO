@@ -74,6 +74,16 @@ class wfpt_simul:
                                 mag=fudged_dfs_mag, zenith=src_zen, azimuth=src_azi)
         self.dfs = wfpt_dfs(self.dfs_src)
 
+        # --------------- DM grid fine alignment --------------------
+        self.dm_default_alignment = {"M1" : { "dm_x_shift" : -5.931837537882141e-05, 
+                                              "dm_y_shift" : -0.0002851065575980342, 
+                                              "dm_z_rot" : 0.0004224370709361102}, 
+                                     "M2" : { "dm_x_shift" : -7.332257279909798e-05,
+                                              "dm_y_shift" : -8.955094150021824e-05,
+                                              "dm_z_rot" : 0.013236816020918134}}
+        self.dm_grid_alignment(mirror='M1')
+        self.dm_grid_alignment(mirror='M2')
+
  
     def calibrate_sensors(self, keep_rays_for_plot=True):
         """
@@ -324,15 +334,16 @@ class wfpt_simul:
     def dm_grid_alignment(self, mirror=None, dm_x_shift=0.0, dm_y_shift=0.0, dm_z_rot=0.0):
         """
         Adjust the alignment of the DM grid. All adjustments defined in the DM grid coordinate system.
+        As reference: the DM pitch by design is 1.5 mm, and the GMT pupil diameter in the DM plane is 24.5 mm.
         
         Parameters:
         -----------
         mirror : string
             Either "M1" or "M2"
         dm_x_shift : float
-            Shift in the x-axis (expressed as fraction of pupil size). Default: 0.0
+            Shift in the x-axis (meters in the DM plane). Default: 0.0
         dm_y_shift : float
-            Shift in the y-axis (expressed as fraction of pupil size). Default: 0.0
+            Shift in the y-axis (meters in the DM plane). Default: 0.0
         dm_z_rot : float
             Rotation about the z-axis (radians). Default: 0.0
         """
@@ -344,9 +355,9 @@ class wfpt_simul:
             DMs = [self.shs_path.M2_DM, self.dfs_path.M2_DM]
         
         for DM in DMs:
-            DM.motion_CS.origin[-1,0] = dm_x_shift * DM.D_clear
-            DM.motion_CS.origin[-1,1] = dm_y_shift * DM.D_clear
-            DM.motion_CS.euler_angles[-1,2] = dm_z_rot
+            DM.motion_CS.origin[-1,0] = dm_x_shift + self.dm_default_alignment[mirror]['dm_x_shift']
+            DM.motion_CS.origin[-1,1] = dm_y_shift + self.dm_default_alignment[mirror]['dm_y_shift']
+            DM.motion_CS.euler_angles[-1,2] = dm_z_rot + self.dm_default_alignment[mirror]['dm_z_rot']
             DM.motion_CS.update()
     
     #========================= MODAL CONTROL ==========================
