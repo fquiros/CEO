@@ -93,9 +93,9 @@ class wfpt_zernike_modes_creation:
         
         self.IFmats[mirror] = \
             {'SPP_IFmat'  : self.wfpt.influence_matrix(path=self._path_, mirror=mirror, 
-                                                mode='segment piston', stroke=1e-8),
+                                                mode='segment piston', stroke=5e-8),
              'RxRy_IFmat' : self.wfpt.influence_matrix(path=self._path_, mirror=mirror, 
-                                                mode='segment tip-tilt', stroke=1e-8),
+                                                mode='segment tip-tilt', stroke=1e-7),
              'DM_IFmat'   : self.wfpt.influence_matrix(path=self._path_, mirror=mirror, 
                                                 mode='actuators', stroke=0.1)}
 
@@ -172,20 +172,20 @@ class wfpt_zernike_modes_creation:
         #--- Get the slaved DM_IFmat with only valid actuators present.
         DMmat = self.get_dm_influence_matrix(mirror, dm_valid_acts_file)
         
-        #--- Merge PTT SPP and STT Influence matrices (using only valid PTT segments)
+        #--- Get the PTT SPP and STT Influence matrices (using only valid PTT segments)
         SPP_IFmat, RxRy_IFmat = self.get_ptt_influence_matrix(mirror, ptt_valid_segments=ptt_valid_segments)
-        PTTmat = np.concatenate((SPP_IFmat, RxRy_IFmat), axis=1)
         
         #--- Norm-weighted merged IFmat
         DMmat_norm  = np.linalg.norm(DMmat)
-        PTTmat_norm = np.linalg.norm(PTTmat)
-        mergedIFmat = np.concatenate((PTTmat/PTTmat_norm, DMmat/DMmat_norm), axis=1)
+        SPP_IFmat_norm = np.linalg.norm(SPP_IFmat)
+        RxRy_IFmat_norm = np.linalg.norm(RxRy_IFmat)
+        mergedIFmat = np.concatenate((SPP_IFmat/SPP_IFmat_norm, RxRy_IFmat/RxRy_IFmat_norm, DMmat/DMmat_norm), axis=1)
         self.IFmats[mirror]['mergedIFmat'] = mergedIFmat
-        self.IFmats[mirror]['mergedIFmat_norms'] = {'DMmat_norm': DMmat_norm, 'PTTmat_norm': PTTmat_norm}
+        self.IFmats[mirror]['mergedIFmat_norms'] = {'DMmat_norm': DMmat_norm, 'SPP_IFmat_norm': SPP_IFmat_norm, 'RxRy_IFmat_norm': RxRy_IFmat_norm}
         print("--> Merged IFmat computed successfully.")
 
 
-    def get_projection_matrix(self, mirror, dm_valid_acts_file=None, ptt_valid_segments=[0,1,2,3,4,5,6]):
+    def get_projection_matrix(self, mirror, dm_valid_acts_file=None, ptt_valid_segments=[0,1,2,3,4,5,6], projMat_type='merged simple LS', svd_thr=1e-15):
         """
         Computes the matrix that projects segment Zernike modes onto the WFPT active mirrors.
         
@@ -201,13 +201,17 @@ class wfpt_zernike_modes_creation:
         """
         self.get_merged_influence_matrix(mirror, dm_valid_acts_file, ptt_valid_segments=ptt_valid_segments)
         IFmat = self.IFmats[mirror]['mergedIFmat']
-        self.projMats[mirror] = np.linalg.pinv(IFmat)
+        
+        if projMat_type == 'merged simple LS':
+            inv_IFmat = np.linalg.pinv(IFmat, rcond=svd_thr)
+        
+        self.projMats[mirror] = {'merged': inv_IFmat, 'projMat_type': projMat_type, 'svd_thr': svd_thr} 
         print("--> Projection Matrix computed successfully.")
 
 
     def get_fitted_zernikes(self, mirror):
         """
-        Compute Zernike modes fitte by the WFPT active mirrors (PTT array + DM).
+        Compute Zernike modes fitted by the WFPT active mirrors (PTT array + DM).
         
         Parameters:
         -----------
@@ -222,7 +226,7 @@ class wfpt_zernike_modes_creation:
             return
         
         IFmat = self.IFmats[mirror]['mergedIFmat']
-        inv_IFmat = self.projMats[mirror]
+        inv_IFmat = self.projMats[mirror]['merged']
         ndof = inv_IFmat.shape[0]
         nzern = self.Zmat.shape[1]
         
@@ -235,15 +239,20 @@ class wfpt_zernike_modes_creation:
         
         #--- Compute full-sized and de-normalized M2C
         DMmat_norm  = self.IFmats[mirror]['mergedIFmat_norms']['DMmat_norm']
-        PTTmat_norm = self.IFmats[mirror]['mergedIFmat_norms']['PTTmat_norm']
+        SPP_IFmat_norm = self.IFmats[mirror]['mergedIFmat_norms']['SPP_IFmat_norm']
+        RxRy_IFmat_norm = self.IFmats[mirror]['mergedIFmat_norms']['RxRy_IFmat_norm']
         n_valid_acts = self.IFmats[mirror]['dm_valid_actuators']['n_valid_acts']
         valid_acts   = self.IFmats[mirror]['dm_valid_actuators']['valid_acts']
         slaveMat     = self.IFmats[mirror]['dm_valid_actuators']['slaveMat']
         ptt_valid_dofs   = self.IFmats[mirror]['ptt_valid_actuators']['ptt_valid_dofs']
-        n_ptt_valid_dofs = self.IFmats[mirror]['ptt_valid_actuators']['n_ptt_valid_dofs']
+        #n_ptt_valid_dofs = self.IFmats[mirror]['ptt_valid_actuators']['n_ptt_valid_dofs']
+        n_ptt_valid_segments = len(self.IFmats[mirror]['ptt_valid_actuators']['ptt_valid_segments'])
                                 
         valid_dofs = np.concatenate( (ptt_valid_dofs, valid_acts) )
-        normDiag = 1. / np.concatenate( (np.ones(n_ptt_valid_dofs)*PTTmat_norm, np.ones(n_valid_acts)*DMmat_norm) )
+        #normDiag = 1. / np.concatenate( (np.ones(n_ptt_valid_dofs)*PTTmat_norm, np.ones(n_valid_acts)*DMmat_norm) )
+        normDiag = 1. / np.concatenate( (np.ones(n_ptt_valid_segments)*SPP_IFmat_norm,
+                                         np.ones(n_ptt_valid_segments*2)*RxRy_IFmat_norm,
+                                         np.ones(n_valid_acts)*DMmat_norm) )
         
         Zmat_M2C = np.zeros((21+292,nzern,7))
         for segid in range(7):
@@ -268,7 +277,8 @@ class wfpt_zernike_modes_creation:
         
         tosave = dict(mirror=mirror, modes_type='segment Zernikes', LCS_rotation=self.CS_rotation,
                     dm_valid_acts_file=self.IFmats[mirror]['dm_valid_actuators']['filename'],
-                    projMat_type='merged simple LS', M2C=self.fitZern[mirror]['M2C'])
+                    projMat_type=self.projMats[mirror]['projMat_type'], svd_thr=self.projMats[mirror]['svd_thr'],
+                    M2C=self.fitZern[mirror]['M2C'])
         
         np.savez(fullname, **tosave)
         print("Saving to file %s"%fullname)

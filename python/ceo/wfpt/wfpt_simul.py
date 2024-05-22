@@ -269,11 +269,17 @@ class wfpt_simul:
                                         _path_._M2_baffle_diam, _path_.project_truss_onaxis)
         if os.path.isfile(IFmat_fullname):
             print("Restoring %s IFmat from file: %s"%(device, os.path.basename(IFmat_fullname)))
-            with np.load(IFmat_fullname) as data:
+            with np.load(IFmat_fullname, allow_pickle=True) as data:
                 IFmat = data['IFmat']
                 saved_GMTmask = data['GMTmask']
+                
+                if mode == "actuators":
+                    if data['dm_default_alignment'] != self.dm_default_alignment[mirror]:
+                        raise Exception("DM alignment in saved IFmat is different from current one.")
+                    
             if np.sum(np.logical_xor(GMTmask, saved_GMTmask)) > 0:
                 raise Exception("Mask used in saved IFmat is different from current mask!")
+            
 
         #--- Compute and save the IFmat
         else:
@@ -325,6 +331,7 @@ class wfpt_simul:
             tosave = dict(IFmat=IFmat, GMTmask=GMTmask, segmask=segmask)
             if mode == "actuators":
                 tosave['IF_peak'] = IF_peak
+                tosave['dm_default_alignment'] = self.dm_default_alignment[mirror]
             np.savez(IFmat_fullname, **tosave)
             print("IFmat saved to file %s"%IFmat_fullname)
 
