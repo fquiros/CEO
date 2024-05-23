@@ -179,13 +179,16 @@ class wfpt_zernike_modes_creation:
         DMmat_norm  = np.linalg.norm(DMmat)
         SPP_IFmat_norm = np.linalg.norm(SPP_IFmat)
         RxRy_IFmat_norm = np.linalg.norm(RxRy_IFmat)
+        PTTmat = np.concatenate((SPP_IFmat/SPP_IFmat_norm, RxRy_IFmat/RxRy_IFmat_norm), axis=1)
         mergedIFmat = np.concatenate((SPP_IFmat/SPP_IFmat_norm, RxRy_IFmat/RxRy_IFmat_norm, DMmat/DMmat_norm), axis=1)
+        self.IFmats[mirror]['PTTmat'] = PTTmat
         self.IFmats[mirror]['mergedIFmat'] = mergedIFmat
         self.IFmats[mirror]['mergedIFmat_norms'] = {'DMmat_norm': DMmat_norm, 'SPP_IFmat_norm': SPP_IFmat_norm, 'RxRy_IFmat_norm': RxRy_IFmat_norm}
         print("--> Merged IFmat computed successfully.")
 
 
-    def get_projection_matrix(self, mirror, dm_valid_acts_file=None, ptt_valid_segments=[0,1,2,3,4,5,6], projMat_type='merged simple LS', svd_thr=1e-15):
+    def get_projection_matrix(self, mirror, dm_valid_acts_file=None, ptt_valid_segments=[0,1,2,3,4,5,6], projMat_type='merged simple LS', svd_thr=1e-15,
+                             independent_PTT_projection=True):
         """
         Computes the matrix that projects segment Zernike modes onto the WFPT active mirrors.
         
@@ -198,6 +201,16 @@ class wfpt_zernike_modes_creation:
         ptt_valid_segments : list
             List of active PTT array segments. Default: all
             Note: segment numbering in GMT convention.
+        projMat_type : str
+            Identify the type of projection. Default: 'merged simple LS'.
+                Types supported:
+                    'merged simple LS' : projector is computed as the generalized inverse of the merged IF matrix 'mergedIFmat'.
+                                         SVD filtering is possible using 'svd_thr' parameter.
+                    'regularized LS' : TBD
+        svd_thr : float
+            SVD threshold value to be applied in the computation of the generalized inverse.
+        independent_PTT_projection : bool
+            If True, segment Zernikes Z1, Z2, Z3 will be fitted using only the PTT array Influence Functions.
         """
         self.get_merged_influence_matrix(mirror, dm_valid_acts_file, ptt_valid_segments=ptt_valid_segments)
         IFmat = self.IFmats[mirror]['mergedIFmat']
@@ -205,7 +218,14 @@ class wfpt_zernike_modes_creation:
         if projMat_type == 'merged simple LS':
             inv_IFmat = np.linalg.pinv(IFmat, rcond=svd_thr)
         
-        self.projMats[mirror] = {'merged': inv_IFmat, 'projMat_type': projMat_type, 'svd_thr': svd_thr} 
+        self.projMats[mirror] = {'merged': inv_IFmat, 'projMat_type': projMat_type, 'svd_thr': svd_thr, 
+                                 'independent_PTT_projection': independent_PTT_projection}
+        
+        if independent_PTT_projection:
+            PTTmat = self.IFmats[mirror]['PTTmat']
+            inv_PTTmat = np.linalg.pinv(PTTmat)            
+            self.projMats[mirror]['inv_PTTmat'] = inv_PTTmat
+        
         print("--> Projection Matrix computed successfully.")
 
 
@@ -236,6 +256,16 @@ class wfpt_zernike_modes_creation:
         for segid in range(7):
             _Zmat_M2C_[:,:,segid] = inv_IFmat @ self.Zmat[:,:,segid]
             Zmat_bf[:,:,segid] = IFmat @ _Zmat_M2C_[:,:,segid]
+        
+        if self.projMats[mirror]['independent_PTT_projection'] == True:
+            PTTmat = self.IFmats[mirror]['PTTmat']
+            n_ptt_valid_dofs = self.IFmats[mirror]['ptt_valid_actuators']['n_ptt_valid_dofs']
+            ptt_valid_segments = self.IFmats[mirror]['ptt_valid_actuators']['ptt_valid_segments']
+            inv_PTTmat = self.projMats[mirror]['inv_PTTmat']
+            for segid in ptt_valid_segments:
+                _Zmat_M2C_[:,0:3,segid] *= 0
+                _Zmat_M2C_[0:n_ptt_valid_dofs,0:3,segid] = inv_PTTmat @ self.Zmat[:,0:3,segid]
+                Zmat_bf[:,0:3,segid] = PTTmat @ _Zmat_M2C_[0:n_ptt_valid_dofs,0:3,segid]
         
         #--- Compute full-sized and de-normalized M2C
         DMmat_norm  = self.IFmats[mirror]['mergedIFmat_norms']['DMmat_norm']
@@ -278,6 +308,7 @@ class wfpt_zernike_modes_creation:
         tosave = dict(mirror=mirror, modes_type='segment Zernikes', LCS_rotation=self.CS_rotation,
                     dm_valid_acts_file=self.IFmats[mirror]['dm_valid_actuators']['filename'],
                     projMat_type=self.projMats[mirror]['projMat_type'], svd_thr=self.projMats[mirror]['svd_thr'],
+                    independent_PTT_projection=self.projMats[mirror]['independent_PTT_projection'],
                     M2C=self.fitZern[mirror]['M2C'])
         
         np.savez(fullname, **tosave)
