@@ -188,7 +188,7 @@ class wfpt_zernike_modes_creation:
 
 
     def get_projection_matrix(self, mirror, dm_valid_acts_file=None, ptt_valid_segments=[0,1,2,3,4,5,6], projMat_type='merged simple LS', svd_thr=1e-15,
-                             independent_PTT_projection=True):
+                             independent_PTT_projection=True, regularization_factor=5e-2):
         """
         Computes the matrix that projects segment Zernike modes onto the WFPT active mirrors.
         
@@ -206,9 +206,12 @@ class wfpt_zernike_modes_creation:
                 Types supported:
                     'merged simple LS' : projector is computed as the generalized inverse of the merged IF matrix 'mergedIFmat'.
                                          SVD filtering is possible using 'svd_thr' parameter.
-                    'regularized LS' : TBD
+                    'merged regularized LS' : projector that penalizes the DM for creating segment piston and segment TT modes.
+                                              To be used with the "regularization factor" parameter.
         svd_thr : float
-            SVD threshold value to be applied in the computation of the generalized inverse.
+            SVD threshold value to be applied in the computation of the generalized inverse (when projMat_type is 'merged simple LS').
+        regularization_factor : float
+            Regularization factor applied to the regularization term (when projMat_type is 'merged regularized LS').
         independent_PTT_projection : bool
             If True, segment Zernikes Z1, Z2, Z3 will be fitted using only the PTT array Influence Functions.
         """
@@ -218,8 +221,32 @@ class wfpt_zernike_modes_creation:
         if projMat_type == 'merged simple LS':
             inv_IFmat = np.linalg.pinv(IFmat, rcond=svd_thr)
         
+        elif projMat_type == 'merged regularized LS':
+            # 1.--- Compute the inverse of the DM IF matrix
+            DMmat = self.get_dm_influence_matrix(mirror, dm_valid_acts_file)
+            inv_DMmat = np.linalg.pinv(DMmat)
+            # 2.---- Get the segment Z1-Z3 modes (for valid PTT segments only)
+            n_ptt_valid_dofs   = self.IFmats[mirror]['ptt_valid_actuators']['n_ptt_valid_dofs']
+            ptt_valid_segments = self.IFmats[mirror]['ptt_valid_actuators']['ptt_valid_segments']
+            n_ptt_valid_segments = len(ptt_valid_segments)
+            Zpttmat = np.zeros((self.nmask, n_ptt_valid_dofs))
+            for idx, segid in enumerate(ptt_valid_segments):
+                Zpttmat[:,idx] = self.Zmat[:,0,segid]
+                Zpttmat[:,idx+n_ptt_valid_segments]   = self.Zmat[:,1,segid]
+                Zpttmat[:,idx+n_ptt_valid_segments*2] = self.Zmat[:,2,segid]
+            # 3.--- DM best-fit to Z1-Z3 modes
+            sptt_dm_comm = inv_DMmat @ Zpttmat
+            sptt_dm_comm /= np.max(np.abs(sptt_dm_comm))
+            #self.sptt_dm_comm = sptt_dm_comm #--- debugging
+            # 4.--- Compute the regularization term
+            sptt_dm_comm1 = np.concatenate( (np.zeros((n_ptt_valid_dofs,n_ptt_valid_dofs)), sptt_dm_comm) )
+            Wsptt = sptt_dm_comm1 @ sptt_dm_comm1.T
+            # 4.--- Compute regularized merged projector
+            inv_IFmat = np.linalg.solve(IFmat.T @ IFmat + regularization_factor*Wsptt, IFmat.T)
+        
         self.projMats[mirror] = {'merged': inv_IFmat, 'projMat_type': projMat_type, 'svd_thr': svd_thr, 
-                                 'independent_PTT_projection': independent_PTT_projection}
+                                 'independent_PTT_projection': independent_PTT_projection,
+                                'regularization_factor': regularization_factor}
         
         if independent_PTT_projection:
             PTTmat = self.IFmats[mirror]['PTTmat']
