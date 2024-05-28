@@ -75,12 +75,12 @@ class wfpt_simul:
         self.dfs = wfpt_dfs(self.dfs_src)
 
         # --------------- DM grid fine alignment --------------------
-        self.dm_default_alignment = {"M1" : { "dm_x_shift" : -7.64136614671678e-05, 
-                                              "dm_y_shift" : -0.0002069969227914712, 
-                                              "dm_z_rot" : -0.000196500594940761}, 
-                                     "M2" : { "dm_x_shift" : -7.332257279909798e-05,
-                                              "dm_y_shift" : -8.955094150021824e-05,
-                                              "dm_z_rot" : 0.013236816020918134}}
+        self.dm_default_alignment = {"M1" : { "dm_x_shift" : -7.083848594111782e-05, 
+                                              "dm_y_shift" : -0.00024247717346757576, 
+                                              "dm_z_rot" : 5.5587540607318034e-05}, 
+                                     "M2" : { "dm_x_shift" : -8.67826622952257e-05,
+                                              "dm_y_shift" : -9.739655243811362e-05,
+                                              "dm_z_rot" : 0.014075910944086252}}
         self.dm_grid_alignment(mirror='M1')
         self.dm_grid_alignment(mirror='M2')
 
