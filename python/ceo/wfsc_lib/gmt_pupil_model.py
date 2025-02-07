@@ -1,11 +1,24 @@
 import numpy as np
 from .poly_winding_number import poly_winding_number
+from scipy.optimize import minimize
 
 def _conic(r):
-    c = 1/36
-    k = 1-0.9982857
+    """
+    Sag equation of the GMT M1
+    
+    Parameters:
+    ------------
+    r : numpy array
+        radial distance from M1 center.
+    
+    Returns:
+    --------
+    vector (same dimension as r) with the corresponding height of the points lying on M1 surface. 
+    """
+    c = 36 # M1 radius of curvature [m]
+    k = -0.9982857 # M1 conic constant
     r2 = r*r
-    return c*r2/(1+np.sqrt(1-k*c*c*r2))
+    return r2/(c+np.sqrt(c**2 - (1+k)*r2))
 
 
 def _gmt_truss_shadow(pnts):
@@ -115,13 +128,18 @@ def gmt_pupil_model(nPx, pixel_scale, M1_clear_aperture=8.365, M2_baffle_diam=3.
     b = d1 / 2.
     x0 = r1
     y0 = 0
-    d = _conic(8.417/2)*np.sin(a1)
+    
+    #-- Compute effective outer segment separation of projection of tilted M1 outer segment
+    #x0eff = 8.65748 #<--- found numerically
+    x0eff = r1 - _conic(8.417/2)*np.sin(a1) #<--- approximation by Rod used in CEO
+    
     for n in range(7):
         seg_angle = (n*60+90) * (np.pi/180)
         rx = x * np.cos(seg_angle) - y * np.sin(seg_angle)
         ry = x * np.sin(seg_angle) + y * np.cos(seg_angle)
-        tmp = ((rx-x0+d)**2/a**2) + ((ry-y0)**2/b**2)
+        tmp = ((rx-x0eff)**2/a**2) + ((ry-y0)**2/b**2)
         w = np.where((tmp < 1.) * (tmp >= (h1/d1)**2))
         pupil[w] = True
 
     return pupil
+
