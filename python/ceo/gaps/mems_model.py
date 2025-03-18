@@ -25,8 +25,8 @@ class mems_model:
         ref_data = dict(np.load(reference_ifunc_file))
         self.__ref_ifunc = ref_data['ifunc']
         self.__ref_act_pitch_pix = ref_data['act_pitch_pix'][()]
-        self.__ref_ifunc_xc = ref_data['if_row_center'][()]
-        self.__ref_ifunc_yc = ref_data['if_col_center'][()]
+        self.__ref_ifunc_row_center = ref_data['if_row_center'][()]
+        self.__ref_ifunc_col_center = ref_data['if_col_center'][()]
         self.__ref_nPx = self.__ref_ifunc.shape[0]
         
         #--- Load actuator mask
@@ -40,10 +40,10 @@ class mems_model:
         ref_pixscale = self.act_pitch_m / self.__ref_act_pitch_pix
         
         #--- Sets interpolator function
-        ref_xx = np.arange(self.__ref_nPx) - self.__ref_ifunc_xc
-        ref_yy = np.arange(self.__ref_nPx) - self.__ref_ifunc_yc
-        self.__ref_xx_meters = ref_xx * ref_pixscale
-        self.__ref_yy_meters = ref_yy * ref_pixscale
+        ref_row = np.arange(self.__ref_nPx) - self.__ref_ifunc_row_center
+        ref_col = np.arange(self.__ref_nPx) - self.__ref_ifunc_col_center
+        self.__ref_row_meters = ref_row * ref_pixscale
+        self.__ref_col_meters = ref_col * ref_pixscale
         self.set_interpolator()
         
         #--- Sets MEMS grid (centered on pupil)        
@@ -57,8 +57,8 @@ class mems_model:
         Note:
             See RegularGridInterpolator documentation for description of parameters.
         """
-        self.interp = RegularGridInterpolator((self.__ref_xx_meters, 
-                                               self.__ref_yy_meters),
+        self.interp = RegularGridInterpolator((self.__ref_row_meters, 
+                                               self.__ref_col_meters),
                                                self.__ref_ifunc,
                                                 bounds_error = bounds_error,
                                                 method = method,
@@ -69,11 +69,13 @@ class mems_model:
         Define MEMS grid.
         """
         grid_n_acts = self._grid_n_acts
-        act_grid_x = (np.arange(grid_n_acts) - (grid_n_acts-1)/2) * self.act_pitch_m
-        act_grid_y = (np.arange(grid_n_acts) - (grid_n_acts-1)/2) * self.act_pitch_m
-        act_x_meters, act_y_meters = np.meshgrid(act_grid_x, act_grid_y, indexing='ij')
-        self._act_x_meters = act_x_meters[self._act_mask]
-        self._act_y_meters = act_y_meters[self._act_mask]
+        act_grid_row = (np.arange(grid_n_acts) - (grid_n_acts-1)/2) * self.act_pitch_m
+        act_grid_col = (np.arange(grid_n_acts) - (grid_n_acts-1)/2) * self.act_pitch_m
+        act_row_meters, act_col_meters = np.meshgrid(act_grid_row, act_grid_col, indexing='ij')
+        #-- Flip row coordinate to match BMC actuator numbering
+        self._act_row_meters = -act_row_meters[self._act_mask]
+        self._act_col_meters =  act_col_meters[self._act_mask]
+
     
     
     def gridact_to_act(self, gridact_idx):
@@ -115,15 +117,15 @@ class mems_model:
             size of array in meters.
         """
         array_pixscale = array_size_m / (array_size_pix-1)
-        gridx = (np.arange(array_size_pix) - (array_size_pix-1)/2) * array_pixscale
-        gridy = (np.arange(array_size_pix) - (array_size_pix-1)/2) * array_pixscale
+        gridrow = (np.arange(array_size_pix) - (array_size_pix-1)/2) * array_pixscale
+        gridcol = (np.arange(array_size_pix) - (array_size_pix-1)/2) * array_pixscale
         self.IFcube = np.zeros((array_size_pix, array_size_pix, self.n_acts))
         
         for this_act in range(self.n_acts):
-            _gridx_ = gridx - self._act_x_meters.ravel()[this_act]
-            _gridy_ = gridy - self._act_y_meters.ravel()[this_act]
-            _gridxx_, _gridyy_ = np.meshgrid(_gridx_, _gridy_, indexing='ij')
-            self.IFcube[:,:,this_act] = self.interp((_gridxx_,_gridyy_))
+            _gridrow_ = gridrow - self._act_row_meters.ravel()[this_act]
+            _gridcol_ = gridcol - self._act_col_meters.ravel()[this_act]
+            gridrow_2d, gridcol_2d = np.meshgrid(_gridrow_, _gridcol_, indexing='ij')
+            self.IFcube[:,:,this_act] = self.interp((gridrow_2d, gridcol_2d))
         
         print("Completed creation of influence function cube of size %d x %d x %d."%self.IFcube.shape)
         
