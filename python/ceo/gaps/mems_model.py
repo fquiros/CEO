@@ -17,9 +17,12 @@ class mems_model:
         npz file containing the actuator mask (e.g. the 2040 valid actuators in a 50x50 array for the MEMS2K).
     
     act_pitch_m : float
-        desired actuator pitch in meters       
+        desired actuator pitch in meters
+    
+    grid_rot_deg : float
+        DM grid clocking [deg]. Default: 0 deg
     """
-    def __init__(self, reference_ifunc_file, act_mask_file, act_pitch_m):
+    def __init__(self, reference_ifunc_file, act_mask_file, act_pitch_m, grid_rot_deg=0.0):
         
         #--- Load reference influence function model
         ref_data = dict(np.load(reference_ifunc_file))
@@ -46,7 +49,8 @@ class mems_model:
         self.__ref_col_meters = ref_col * ref_pixscale
         self.set_interpolator()
         
-        #--- Sets MEMS grid (centered on pupil)        
+        #--- Sets MEMS grid (centered on pupil)
+        self._grid_rot_deg = grid_rot_deg
         self._set_mems_grid()
     
     
@@ -69,13 +73,21 @@ class mems_model:
         Define MEMS grid.
         """
         grid_n_acts = self._grid_n_acts
+        rot_angle = self._grid_rot_deg * np.pi / 180.
         act_grid_row = (np.arange(grid_n_acts) - (grid_n_acts-1)/2) * self.act_pitch_m
         act_grid_col = (np.arange(grid_n_acts) - (grid_n_acts-1)/2) * self.act_pitch_m
         act_row_meters, act_col_meters = np.meshgrid(act_grid_row, act_grid_col, indexing='ij')
+        
         #-- Flip row coordinate to match BMC actuator numbering
-        self._act_row_meters = -act_row_meters[self._act_mask]
-        self._act_col_meters =  act_col_meters[self._act_mask]
-
+        _act_row_meters_ = -act_row_meters[self._act_mask]
+        _act_col_meters_ =  act_col_meters[self._act_mask]
+        
+        #-- Rotate grid
+        rotmat = np.array([[np.cos(rot_angle), -np.sin(rot_angle)],
+                           [np.sin(rot_angle),  np.cos(rot_angle)]])
+        ijtemp = rotmat @ np.array([_act_col_meters_.ravel(), _act_row_meters_.ravel()])
+        self._act_row_meters = np.squeeze(ijtemp[1,:])
+        self._act_col_meters = np.squeeze(ijtemp[0,:])
     
     
     def gridact_to_act(self, gridact_idx):
