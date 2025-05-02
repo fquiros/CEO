@@ -142,13 +142,30 @@ class mems_model:
         print("Completed creation of influence function cube of size %d x %d x %d."%self.IFcube.shape)
         
         
+    def get_wf(self, dm_command):
+        """
+        Generate DM wavefront corresponding to the input DM command vector.
         
-        
-
+        Parameters:
+        -----------
+        dm_command : float vector
+            2040-element DM command.
+        """
+        return np.sum(self.IFcube * dm_command, axis=2)
     
+    
+    def get_comm_2D(self, dm_command):
+        """
+        Reformat a DM command vector in a 2D map
         
-        
-
+        Parameters:
+        -----------
+        dm_command : float vector
+            2040-element DM command.
+        """
+        com2d = np.full((self._grid_n_acts,self._grid_n_acts), np.nan)
+        com2d[self._act_mask] = dm_command
+        return com2d
             
         
     
