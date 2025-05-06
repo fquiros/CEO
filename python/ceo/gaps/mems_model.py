@@ -168,4 +168,35 @@ class mems_model:
         return com2d
             
         
-    
+    def get_valid_actuators(self, mask, threshold=0.4):
+        """
+        Identify MEMS DM illuminated actuators within the pupil mask.
+        
+        Parameters:
+        -----------
+        mask : 2D numpy array (array_size_pix, array_size_pix)
+            Pupil mask to use to determine visibility of actuator influence function.
+        
+        threshold : float
+            Illumination threshold used to identify illuminated (i.e. valid) actuators.
+        
+        Returns:
+        ---------
+        validacts : numpy array 
+            index vector of valid actuators.
+        
+        ifpeak : numpy array
+            vector of influence function illumination peak values (within the mask).
+        """
+        assert hasattr(self, 'IFcube'), "Generate influence functions first with compute_if_cube()..."
+        assert mask.shape == self.IFcube[:,:,0].shape, "mask must have same sampling as influence functions."
+        assert threshold <= 1.0 and threshold >= 0.0, "threshold must be 0.0 <= thr <= 1.0" 
+        
+        ifpeak = np.zeros(self.n_acts)
+        for this_act in range(self.n_acts):
+            myif = self.IFcube[:,:,this_act] * mask
+            ifpeak[this_act] = np.max(myif)
+
+        validacts, = np.where(ifpeak > threshold)
+        print('Number of MEMS selected actuators: %d'%len(validacts))
+        return validacts, ifpeak
