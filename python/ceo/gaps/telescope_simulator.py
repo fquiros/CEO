@@ -109,7 +109,7 @@ class telescope_simulator:
         return validacts, ifpeak
     
     
-    def get_dm_influence_matrices(self, validacts, rcond=1e-15):
+    def get_dm_influence_matrices(self, validacts, rcond=1e-15, silent=False):
         """
         Computes the DM Influence Matrix, its norm, and its inverse.
         
@@ -127,15 +127,17 @@ class telescope_simulator:
             2. DMmat_norm : norm of DMmat
             3. inv_DMmat : generalized inverse of DMmat
         """
-        print("--> Computing DM influence matrices.....")
+        if not silent:
+            print("--> Computing DM influence matrices.....")
         DMmat = (self.mems2k.IFcube[:,:,validacts].reshape((-1,len(validacts))))[self.pup.GMTmask,:]
-        print('DMmat condition number: %f'%np.linalg.cond(DMmat))
+        if not silent:
+            print('DMmat condition number: %f'%np.linalg.cond(DMmat))
         DMmat_norm  = np.linalg.norm(DMmat)
         inv_DMmat = np.linalg.pinv(DMmat, rcond=rcond)
         return DMmat, DMmat_norm, inv_DMmat
     
     
-    def get_ptt_influence_matrices(self, rcond=1e-15):
+    def get_ptt_influence_matrices(self, rcond=1e-15, silent=False):
         """
         Computes the PTT Influence Matrix, its norm, and its inverse.
         
@@ -150,11 +152,13 @@ class telescope_simulator:
             2. PTTmat_norm : norm of PTTmat
             3. inv_PTTmat : generalized inverse of PTTmat
         """
-        print("--> Computing PTT influence matrices.....")
+        if not silent:
+            print("--> Computing PTT influence matrices.....")
         PTTmat = np.zeros((self.pup.nmask, 7*3))
         for jj in range(7*3):
             PTTmat[:,jj] = self.ptt.IFcube[:,:,jj][self.pup.GMTmask2D]
-        print('PTTmat condition number: %f'%np.linalg.cond(PTTmat))
+        if not silent:
+            print('PTTmat condition number: %f'%np.linalg.cond(PTTmat))
         PTTmat_norm = np.linalg.norm(PTTmat)
         inv_PTTmat = np.linalg.pinv(PTTmat, rcond=rcond)
         return PTTmat, PTTmat_norm, inv_PTTmat
@@ -187,11 +191,11 @@ class telescope_simulator:
             3. DMmat_norm : norm of DMmat
             4. PTTmat_norm : norm of PTTmat
         """
-        DMmat, DMmat_norm, inv_DMmat = self.get_dm_influence_matrices(validacts, rcond=dm_rcond)
-        PTTmat, PTTmat_norm, inv_PTTmat = self.get_ptt_influence_matrices(rcond=ptt_rcond)
+        print("--> Computing Merged influence matrices.....")
+        DMmat, DMmat_norm, inv_DMmat = self.get_dm_influence_matrices(validacts, rcond=dm_rcond, silent=True)
+        PTTmat, PTTmat_norm, inv_PTTmat = self.get_ptt_influence_matrices(rcond=ptt_rcond, silent=True)
         
         #---> Merged influence matrix, weighted by the norms.
-        print("--> Computing Merged influence matrices.....")
         mergedIFmat = np.concatenate((PTTmat/PTTmat_norm, DMmat/DMmat_norm), axis=1)
         
         #--- DM best-fit to PTT modes
@@ -204,7 +208,6 @@ class telescope_simulator:
         #--- Regularized inverse of merged influence matrix
         reg_CP_mat = mergedIFmat.T @ mergedIFmat + regularization_factor*Wsptt
         inv_mergedIFmat = np.linalg.solve(reg_CP_mat, mergedIFmat.T)
-        print("Done! .....")
         
         return mergedIFmat, inv_mergedIFmat, DMmat_norm, PTTmat_norm
         
