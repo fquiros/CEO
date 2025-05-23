@@ -23,3 +23,5 @@ gpuMemMonitor
 ActiveOptics/*
 doc/ceo.*
 doc/cyceo.*
+*.html
+*.png

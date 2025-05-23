@@ -1,5 +1,5 @@
 import numpy as np
-from poly_winding_number import poly_winding_number
+from .poly_winding_number import poly_winding_number
 
 def _conic(r):
     c = 1/36
