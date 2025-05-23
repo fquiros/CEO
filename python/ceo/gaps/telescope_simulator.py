@@ -51,7 +51,7 @@ class telescope_simulator:
         Dtel = 25.4 #m
         act_pitch_m = Dtel / pupil_size_in_mems_pitches
         self.mems2k = mems_model(mems_ifunc_fname, act_mask_fname, act_pitch_m=act_pitch_m, 
-                                 grid_rot_deg=mems_grid_rot_angle)
+                                 grid_rot_deg=mems_grid_rot_angle-array_rot_angle)
         self.mems2k.compute_if_cube(array_size_pix, array_size_m)
 
         #---> PTT array model
