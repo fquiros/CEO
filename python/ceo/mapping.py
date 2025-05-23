@@ -18,10 +18,10 @@ class Mapping(object):
 
         if filename is not None:
             self.load(filename)
-            u = np.linspace(-1,1,self.suit['Ni'])*self.suit['L']*0.5
+            u = np.linspace(-1,1,self.suit['Ni'][0])*self.suit['L']*0.5
             x,y = np.meshgrid(u,u)
             xy = np.vstack([x.flatten(),y.flatten()]).T
-            z = self.suit['M'].reshape(-1,self.suit['Ni']**2).T
+            z = self.suit['M'].reshape(-1,self.suit['Ni'][0]**2).T
 
         if xy is not None:
 
@@ -106,10 +106,10 @@ class Mapping(object):
 
         path_to_modes = os.path.join( os.path.abspath(__file__).split('python')[0] , 'gmtMirrors' , filename+'.ceo' )
         with open(path_to_modes,'rb') as f:
-            self.suit['Ni']     = np.fromfile(f, dtype=np.int32, count=1)[0]
-            self.suit['L']      = np.fromfile(f, dtype=np.double, count=1)[0]
-            self.suit['N_SET']  = np.fromfile(f, dtype=np.int32, count=1)[0]
-            self.suit['N_MODE'] = np.fromfile(f, dtype=np.int32, count=1)[0]
+            self.suit['Ni']     = np.fromfile(f, dtype=np.int32, count=1)
+            self.suit['L']      = np.fromfile(f, dtype=np.double, count=1)
+            self.suit['N_SET']  = np.fromfile(f, dtype=np.int32, count=1)
+            self.suit['N_MODE'] = np.fromfile(f, dtype=np.int32, count=1)
             self.suit['s2b']    = np.fromfile(f, dtype=np.int32, count=7)
             self.suit['M']      = np.fromfile(f, dtype=np.double, count=-1)
 
@@ -127,14 +127,14 @@ class Mapping(object):
 
         N  = int(z.suit['Ni']**2)
         #xM = x.suit['M'].reshape(-1,N)
-        xM = np.vsplit(x.suit['M'].reshape(-1,N),x.suit['N_SET'])
-        yM = np.vsplit(y.suit['M'].reshape(-1,N),y.suit['N_SET'])
+        xM = np.vsplit(x.suit['M'].reshape(-1,N),int(x.suit['N_SET']))
+        yM = np.vsplit(y.suit['M'].reshape(-1,N),int(y.suit['N_SET']))
         N_mode = y.suit['N_MODE']
         M = np.vstack([np.vstack([x.copy(),y.copy()]) for x,y in zip(xM,yM)])
 
         z.suit['M'] = M.flatten()
         return z
-
+    
     @property
     def data(self):
         return dict(Ni=int(self.suit['Ni']),
@@ -150,7 +150,7 @@ class Mapping(object):
     @N_MODE.setter
     def N_MODE(self,value):
         Ni2  = int(self.suit['Ni']**2)
-        M = np.vsplit(self.suit['M'].reshape(-1,Ni2),self.suit['N_SET'])
+        M = np.vsplit(self.suit['M'].reshape(-1,Ni2),self.suit['N_SET'][0])
         self.suit['N_MODE'] = np.array( value,
                                         dtype=np.int32)
         Mr = np.vstack([_[:value,:] for _ in M])

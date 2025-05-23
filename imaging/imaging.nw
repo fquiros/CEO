@@ -87,7 +87,7 @@ struct imaging {
 <<apply field stop>>
 <<apply pyramid>>
 <<apply irradiance>>
-<<assign wave_PUPIL to source wavefront>>
+<<assign wave PUPIL to source wavefront>>
 <<binning>>
 <<read-out>>
 <<read-out with background>>
@@ -821,7 +821,7 @@ __global__ void apply_field_stop(float2 *d__wave_PUPIL, int N_DFT,
   }
 }
 @
-<<assign wave_PUPIL to source wavefront>>=
+<<assign wave PUPIL to source wavefront>>=
 __global__ void assign_to_wavefront(float* amplitude, float* phase, const int N_PX, 
                                     float wavenumber, float2 *d__wave_PUPIL, const int N_DFT) {
   int i, j, k, l, iSource;
