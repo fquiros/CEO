@@ -3,37 +3,47 @@ import ceo
 import unix
 import agf
 import numpy as np
-from copy import deepcopy
 import os
+from copy import deepcopy
+from raytrace import raytrace
 
 
 # global variables
 UNITS    = { "MM": 1e-3, "METER": 1.0 }
 GlassDir = "glass"
 
+temp = 20.0
+pres = 1.0
 
 class ZemaxModel():
-    def __init__(self, filename, src):
+    def __init__(self, filename, src, field=1):
         self.src = src
+        self.field = field
 
         self.unit = 1e-3
 
         self.source_material = '\"\"'
 
         self.field_angles = {}
+        self.zenith  = 0.0
+        self.azimuth = 0.0
 
         self.surfaces    = []
         self.surfcounter = 0
 
         self.prev_disz = 0.0
 
+        self.tilting     = False
+
         self.stop  = 0
         self.float = 0
+
+        self.pending_decenters = None
 
         self.mce_curr = []
         self.mce_ops  = []
 
-        self.default_surf = { "CONI": 0.0, "PARM": [] }
+        self.default_surf = { "decenters": [0.0, 0.0, 0.0], "CONI": 0.0, "PARM": {}, "TILTHELPER": 0 }
         self.current = deepcopy(self.default_surf)
 
         for line in unix.cat(filename).split('\n'):
@@ -43,9 +53,22 @@ class ZemaxModel():
 
         self.surfaces.append(getConic(self.current))
 
-
     def BLNK(self, *line): pass
     def ELOB(self, *line): pass
+    def VPAR(self, *line): pass
+    def RAED(self, *line): pass
+    def RAID(self, *line): pass
+    
+    # WFPT KEYWORDS NOT RECOGNIZED
+    def AUTH(self, *line): pass    
+    def OMMA(self, *line): pass    
+    def HYPR(self, *line): pass    
+    def XAIM(self, *line): pass    
+    def YAIM(self, *line): pass    
+    def ZAIM(self, *line): pass    
+    def LUID(self, *line): pass    
+    def SSID(self, *line): pass    
+    def MEMA(self, *line): pass    
 
     def GCAT(self, *cats):
         global GlassDir
@@ -58,12 +81,14 @@ class ZemaxModel():
                 glassfiles.append(agf.AGFFile(file))
             else:
                 pass
-                # print "Could not load catelogue in " + file
+                # print ("Could not load catelogue in " + file)
 
         self.GlassIndex = agf.GlassIndex(glassfiles)
 
         MIRROR = { 'formula': 14, 'c': [] }
+        # VACUUM = { 'formula': 16, 'c': [] }
         self.GlassIndex["MIRROR"] = MIRROR
+        # self.GlassIndex["VACUUM"] = VACUUM
 
     def GLCZ(self, *line): pass
     def MOFF(self, *line): pass
@@ -84,9 +109,15 @@ class ZemaxModel():
         global UNITS
         self.unit = UNITS[lens_unit]
 
-    def ENVD(self, temp, pres, *line):
-        self.temperature = temp
-        self.pressure = pres
+    def ENVD(self, temperature, pressure, *line):
+        global temp
+        global pres
+
+        temp = float(temperature)
+        pres = float(pressure)
+
+        self.temperature = temperature
+        self.pressure = pressure
 
     def ENPD(self, size, *line):
         self.pupilDiameter = size
@@ -98,13 +129,43 @@ class ZemaxModel():
 
     def SURF(self, id):
         if self.surfcounter > 0:
+
+            if self.pending_decenters != None and self.current["TYPE"] != "COORDBRK":
+                self.current["decenters"][0] = self.pending_decenters[0]
+                self.current["decenters"][1] = self.pending_decenters[1]
+                self.pending_decenters = None
+
+            # setup the first and second coordinate breaks around a tilted surface
+            if self.tilting:
+                pre_tilt_surface         = deepcopy(self.current)
+                pre_tilt_surface["GLAS"] = ""
+                pre_tilt_surface["TILTHELPER"] = 1
+
+                post_tilt_surface         = deepcopy(pre_tilt_surface)
+                post_tilt_surface["DISZ"] = 0.0
+                post_tilt_surface["PARM"] = { k: -v for k, v in post_tilt_surface["PARM"].items() }
+                post_tilt_surface["TILTHELPER"] = 2
+
+                self.current["DISZ"] = 0.0
+                del self.current["PARM"]
+
+                self.surfaces.append(getConic(pre_tilt_surface))
+
             self.surfaces.append(getConic(self.current))
+
+            if self.tilting:
+                self.surfaces.append(getConic(post_tilt_surface))
+                self.tilting = False
 
         self.surfcounter += 1
         self.current = deepcopy(self.default_surf)
 
-    def TYPE(self, type, *line):                  # this definition may need extension to handle more types
+    def TYPE(self, type, *line):
         self.current["TYPE"] = type
+
+        if type == "TILTSURF":
+            self.tilting = True
+
 
     def CURV(self, curv, *line):
         self.current["CURV"] = float(curv) / self.unit
@@ -115,7 +176,18 @@ class ZemaxModel():
     def COMM(self, *line): pass
 
     def PARM(self, n, value):
-        self.current["PARM"].append(str(n) + ":" + str(float(value)))
+        n     = int(n)
+        value = float(value)
+
+        self.current["PARM"][n] = value
+
+        # Zemax order = 1 coord break does tilt and then decenter.
+        # We decenter after tilt in ceo by moving the origin of the next surface.
+        if n == 6 and self.current["TYPE"] == "COORDBRK":
+            if value == 1:
+                self.pending_decenters = [self.current["PARM"][1], self.current["PARM"][2]]
+                self.current["PARM"][1] = 0.0
+                self.current["PARM"][2] = 0.0
 
     def DISZ(self, z):
         if z == "INFINITY":
@@ -140,8 +212,8 @@ class ZemaxModel():
     def GLAS(self, name, *line): 
         self.current["GLAS"] = name
         
-        if self.surfcounter == 1:
-            self.src.material = name
+        # if self.surfcounter == 1:
+            # self.src.material = name
 
     def EFFL(self, *line): pass
     def COAT(self, *line): pass
@@ -207,21 +279,29 @@ class ZemaxModel():
     def WWGN(*line): pass
 
     def update_field_angles(self):
-        x = self.field_angles['x']
-        y = self.field_angles['y']
+        tanOx = math.tan(self.fldx * ceo.constants.DEG2RAD)
+        tanOy = math.tan(self.fldy * ceo.constants.DEG2RAD)
 
-        phi   = math.atan2(y, x)
-        theta = (x * ceo.constants.DEG2RAD) / math.cos(phi)
+        n = math.sqrt(1 / (tanOx**2 + tanOy**2 + 1))
+        l = tanOx * n
+        m = tanOy * n
 
-        azimuth = np.array(phi,   dtype=np.float32, ndmin=1)
-        zenith  = np.array(theta, dtype=np.float32, ndmin=1)
-        self.src.updateDirections(zenith,azimuth)
+        phi   = math.atan2(m, l)
+        theta = math.asin(math.sqrt(l**2 + m**2))
 
-    def XFLN(self, x, *line):
-        self.field_angles['x'] = float(x)
+        # print ("phi: {}, theta: {}".format(phi, theta))
 
-    def YFLN(self, y, *line):
-        self.field_angles['y'] = float(y)
+        self.azimuth = np.array(phi,   dtype=np.float32, ndmin=1)
+        self.zenith  = np.array(theta, dtype=np.float32, ndmin=1)
+
+        self.src.updateDirections(self.zenith, self.azimuth)
+        self.src.reset()
+
+    def XFLN(self, *line):
+        self.fldx = float(line[self.field-1])
+
+    def YFLN(self, *line):
+        self.fldy = float(line[self.field-1])
         self.update_field_angles()
 
     # Multi Configuration Editor
@@ -239,7 +319,7 @@ class ZmxSurf2CEO:
         self.kwargs = {}
 
         self.kwargs["euler_angles"] = [0.0, 0.0, 0.0]
-        self.kwargs["origin"]       = [0.0, 0.0, 0.0]
+        self.kwargs["origin"]       = surf["decenters"]
         self.kwargs["material"]     = ""
 
         self.args.append(surf["CURV"])
@@ -247,15 +327,23 @@ class ZmxSurf2CEO:
 
         del surf["CURV"]
         del surf["CONI"]
+        del surf["decenters"]
+        
+        self.oap = 0
 
         for k,v in surf.items():
             getattr(self, k)(v)
             
+            
         self.conic = self.CEOCreateConic()
 
     def CEOCreateConic(self):
-        print self.args, self.kwargs
-        return ceo.Conic(*self.args, **self.kwargs)
+        print("Conic:")
+        print (self.args)
+        print (self.kwargs)
+        conic = ceo.Conic(*self.args, **self.kwargs)
+        # print (conic.origin)
+        return conic
 
     def DISZ(self, z):
         self.kwargs["origin"][2] = float(z)
@@ -266,8 +354,6 @@ class ZmxSurf2CEO:
     def TYPE(self, type):
         if type == "COORDBRK":
             self.kwargs["coord_break"] = True
-        elif type == "TILTSURF":
-            self.kwargs["tilted_surface"] = True
 
     def GLAS(self, mat):
         self.kwargs["material"] = mat.encode('ascii', 'ignore')
@@ -279,29 +365,92 @@ class ZmxSurf2CEO:
             self.do_coordbrk(parms)
         elif self.surf["TYPE"] == "TILTSURF":
             self.do_tilted(parms)
+        elif self.surf["TYPE"] == "EVENASPH":
+            self.do_evenasph(parms)
+        elif self.surf["TYPE"] == "IRREGULA":
+            self.kwargs["conic_origin"] = [parms[1]*1e-3,parms[2]*1e-3,0]
+
+    def TILTHELPER(self, help):
+        """help: 1 if pre-tilt surface, 2 if post-tilt surface.
+
+           Pre-tilt surface must be an order = 0 coord break.
+        """
+
+        if help == 1:
+            self.kwargs["coord_break"]    = True
+            self.kwargs["rotation_order"] = 0
+
+        if help == 2:
+            self.kwargs["coord_break"]    = True
+
+
+    def do_evenasph(self, parms):
+        coeffs = [parms[i] for i in range(1, 9)]
+
+        # take up to (not including) first trailing zero
+        for j in range(len(coeffs)-1, -1, -1):
+            if coeffs[j] != 0:
+                break
+        
+        self.kwargs["asphere_a"] = np.array(coeffs[:j+1])
 
     def do_tilted(self, parms):
-        pairs = {int(n): float(val) for n, val in map(lambda p: p.split(":"), parms)}
-
-        a = pairs[1]
-        b = pairs[2]
-
-        self.kwargs["euler_angles"][0] = math.atan(pairs[2])
-        self.kwargs["euler_angles"][1] = math.atan(-pairs[1] * math.cos(math.atan(pairs[2])) )
+        a = parms[1]
+        b = parms[2]
+        
+        self.kwargs["euler_angles"][0] = math.atan(parms[2])
+        self.kwargs["euler_angles"][1] = math.atan(-parms[1] * math.cos(math.atan(parms[2])) )
 
     def do_coordbrk(self, parms):
-        pairs = {int(n): float(val) for n, val in map(lambda p: p.split(":"), parms)}
+        surf_type = self.surf['TYPE']
+        if surf_type=="IRREGULA":
+            self.oap = (1+self.oap)%2
+            print("{} [{}] parms:".format(surf_type, self.oap))
+        else:
+            print("{} parms:".format(surf_type))
+        print(parms)
+        self.kwargs["origin"][0] += parms[1]
+        self.kwargs["origin"][1] += parms[2]
 
-        self.kwargs["euler_angles"][0] = pairs[3] * ceo.constants.DEG2RAD
-        self.kwargs["euler_angles"][1] = pairs[4] * ceo.constants.DEG2RAD
-        self.kwargs["euler_angles"][2] = pairs[5] * ceo.constants.DEG2RAD
+        self.kwargs["euler_angles"][0] = parms[3] * ceo.constants.DEG2RAD
+        self.kwargs["euler_angles"][1] = parms[4] * ceo.constants.DEG2RAD
+        self.kwargs["euler_angles"][2] = parms[5] * ceo.constants.DEG2RAD
+
+        if parms[6] == 0:
+            self.kwargs["rotation_order"] = 0
 
         
 def getConic(surf):
     return ZmxSurf2CEO(surf).conic
 
 def update_material(surf, GlassIndex):
+    global temp
+    global pres
+
+    surf.material['temp'] = temp
+    surf.material['pres'] = pres
+    surf.material['D0'] = 0
+    surf.material['D1'] = 0
+    surf.material['D2'] = 0
+    surf.material['E0'] = 0
+    surf.material['E1'] = 0
+    surf.material['Ltk'] = 0
+
     if surf.material['name'] != '':
         G = GlassIndex[surf.material['name']]
         surf.material['formula'] = G['formula']
         surf.material['c'] = G['c']
+
+        if G.has_key('D0'):
+            surf.material['D0'] = float(G['D0'])
+            surf.material['D1'] = float(G['D1'])
+            surf.material['D2'] = float(G['D2'])
+            surf.material['E0'] = float(G['E0'])
+            surf.material['E1'] = float(G['E1'])
+            surf.material['Ltk'] = float(G['Ltk'])
+
+
+
+
+
+

@@ -11,3 +11,11 @@ test:
 
 clean:
 	eksctl delete cluster --name DOS --region us-west-2
+
+build: Dockerfile
+	sudo docker build -t gmto.im/ceo:devel_cuda10.1 .
+
+push_ohio:
+	aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 378722409401.dkr.ecr.us-east-2.amazonaws.com
+	docker tag gmto.im/ceo:devel_cuda10.1 378722409401.dkr.ecr.us-east-2.amazonaws.com/gmto.im/ceo:latest 
+	docker push 378722409401.dkr.ecr.us-east-2.amazonaws.com/gmto.im/ceo:latest

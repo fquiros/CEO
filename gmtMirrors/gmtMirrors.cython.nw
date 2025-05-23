@@ -176,11 +176,11 @@ cdef class GmtMirrors:
             #src.reset()
             if M2_is_a_stop:
                 self.M2.blocking(src.rays)
+            if ~np.isinf(self.M2_baffle):
+                src.rays.gmt_m2_baffle(self.M2_baffle)
             self.M1.trace(src.rays)
             if self.project_truss_onaxis:
                 src.rays.gmt_truss_onaxis()
-            if ~np.isinf(self.M2_baffle):
-                src.rays.gmt_m2_baffle(self.M2_baffle)
             self.M2.trace(src.rays)
 #        src.sphere_distance
 #        src.rays.to_sphere(self.sphere_radius,sphere_distance = src.sphere_distance)
@@ -1394,6 +1394,87 @@ cdef class GMT_M2:
         ut = np.array([xt,yt,zt])[:,None]
         <<transform part 2>>
         return (origin,euler_angles)
+@
+
+\section{GMT M3}
+\label{sec:gmt-m3-1}
+
+\index{gmtMirrors!python!GMT\_M3}
+
+\subsection{PXD file}
+\label{sec:pxd-file-3}
+
+<<gmtMirrors.pxd contents>>=
+    cdef cppclass gmt_m3:
+        int M_ID
+        rtd D_assembly, D_full, D_clear, L, height, conic_c, conic_k
+        float *d__segment_reflectivity
+        rtd *d__conic_c
+        rtd *d__conic_k
+        coordinate_system aperture_CS
+        coordinate_system conic_CS
+        coordinate_system rigid_body_CS
+        coordinate_system motion_CS
+        void setup();
+        void cleanup();
+        void blocking(bundle *rays);
+        void trace(bundle *rays);
+        void update(vector _origin_, vector _euler_angles_,int idx);
+        void reset();
+@
+\subsubsection{Class definition}
+\label{sec:class-definition-6}
+
+<<class definitions>>=
+cdef class GMT_M3:
+    cdef:
+        gmt_m3 *_c_gmt_m12
+    <<GMT M12 class properties>>
+@
+
+\subsection{PYX file}
+\label{sec:pyx-file-2}
+
+<<gmtMirrors.pyx>>=
+# GMT M3
+cdef class GMT_M3:
+    <<GMT M12 docstring>>
+
+    def __cinit__(self, unicode mirror_modes=u"None", int radial_order=0,
+                  int N_MODE=0, dict mirror_modes_data=None, **kwargs):
+        self._c_gmt_m12 = new gmt_m3()
+        self._c_gmt_m12.setup()
+
+        self.aperture_CS   = Coordinate_system(1)
+        self.conic_CS      = Coordinate_system(1)
+        self.motion_CS     = Coordinate_system(1)
+        self.rigid_body_CS = Coordinate_system(1)
+
+        self.aperture_CS.init(   &(self._c_gmt_m12.aperture_CS)   )
+        self.conic_CS.init(      &(self._c_gmt_m12.conic_CS)      )
+        self.motion_CS.init(     &(self._c_gmt_m12.motion_CS)     )
+        self.rigid_body_CS.init( &(self._c_gmt_m12.rigid_body_CS) )
+
+    def __dealloc__(self):
+        self._c_gmt_m12.cleanup()
+
+    def __ixor__(self, dict d):
+        self.motion_CS.update(**d)
+        self.modes.update(**d)
+        return self
+
+    def trace(self, Bundle rays, bint vignetting=True):
+        """
+        Ray tracing to the mirror
+        Parameters
+        ----------
+        rays : Bundle
+        A ray bundle used to propagate the light
+        See also
+        --------
+        Bundle: a class representing a bundle of light rays used for geometric propagation
+        """
+        self._c_gmt_m12.trace(rays._c_bundle)
 @
 
 \section{WFPT}

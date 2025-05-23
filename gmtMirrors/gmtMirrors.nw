@@ -29,6 +29,7 @@
 <<modes structure>>
 <<GMT M1 structure>>
 <<GMT M2 structure>>
+<<GMT M3 structure>>
 <<WFPT structure>>
 <<stereoscopic edge sensors structure>>
 <<lateral edge sensors structure>>
@@ -65,6 +66,7 @@
 <<modes functions>>
 <<GMT M1 functions>>
 <<GMT M2 functions>>
+<<GMT M3 functions>>
 <<WFPT functions>>
 
 <<stereoscopic edge sensors functions>>
@@ -2218,6 +2220,104 @@ void gmt_m2::set_reflectivity(float *reflectivity)
 {
   <<GMT set reflectivity common>>
 }
+@
+@
+
+\section{GMT M3}
+\label{sec:gmt-m3}
+
+\index{gmtMirrors!gmt\_m3}
+A new structure to hold GMT M3 parameters and functions is defined.
+<<GMT M3 structure>>=
+struct gmt_m3 {
+  <<GMT M12 parameters>>
+void setup(void);
+void cleanup(void);
+void blocking(bundle *rays);
+void trace(bundle *rays);
+void update(vector _origin_, vector _euler_angles_,int idx);
+void reset(void);
+};
+@
+
+\subsection{Setup \& Cleanup}
+\label{sec:setup--cleanup-3}
+
+\index{gmtMirrors!gmt\_m2!setup}
+<<GMT M3 functions>>=
+void gmt_m3::setup(void)
+{
+  BS = NULL;
+  ZS = NULL;
+  <<M3 parameters>>
+  <<GMT setup common>>
+}
+@ with
+<<M3 parameters>>=
+ M_ID    = 3;
+ D_assembly = 0.5723;
+ D_full  = 0.5723*1.005; // slightly larger to always encompass M1; needed for the Zernike
+ D_clear = 0.5723;
+ ri      = 0.0;
+ beta    = PI/4.0; // TODO: check sign
+ L       = 0.0;
+ N       = 1;
+ conic_c = 0.0;
+ conic_k = 1.0;
+ height  = 3.9;
+ idx_offset = 0;
+@
+Memory is freed with
+\index{gmtMirrors!gmt\_m3!cleanup}
+<<GMT M3 functions>>=
+void gmt_m3::cleanup(void)
+{
+  fprintf(stdout,"@(CEO)>gmt_m2: freeing memory!\n");
+  <<GMT cleanup common>>
+}
+@ 
+\subsection{Blocking}
+\label{sec:blocking-3}
+
+The rays blocking with M3 is computed with
+\index{gmtMirrors!gmt\_m3!blocking}
+<<GMT M3 functions>>=
+void gmt_m3::blocking(bundle *rays)
+{
+  <<GMT blocking common>>
+}
+@
+\subsection{Ray tracing}
+\label{sec:ray-tracing-3}
+
+The rays propagation through M3 is computed with
+\index{gmtMirrors!gmt\_m3!trace}
+<<GMT M3 functions>>=
+void gmt_m3::trace(bundle *rays)
+{
+  dim3 blockDim, gridDim;
+  rtd R2, Rri2;
+  R2 = D_clear*D_clear*0.25;
+  Rri2 = R2*ri*ri;
+  <<GMT trace common>>
+}
+@
+The rigid body motion parameters are updated with:
+\index{gmtMirrors!gmt\_m3!update}
+<<GMT M3 functions>>=
+void gmt_m3::update(vector _origin_, vector _euler_angles_,int idx)
+{
+    <<GMT M12 update>>
+}
+@
+The rigid body motion are reset to 0 with:
+\index{gmtMirrors!gmt\_m3!reset}
+<<GMT M3 functions>>=
+void gmt_m3::reset(void)
+{
+    <<GMT M12 reset>>
+}
+
 @
 
 \section{WFPT}
