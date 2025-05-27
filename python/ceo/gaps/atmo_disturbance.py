@@ -41,6 +41,9 @@ class atmo_disturbance(SimBlock):
         
         assert turb_type in ["LCO typical-typical", "Single Layer", "Independent Realizations"], "Turbulence type not recognized. See documentation."
         
+        #----------- SimBlock timing parameters ----------------------
+        super().__init__()
+        
         nPx = pup_obj.nPx
         D = pup_obj.D
         self.pixscale = D / (nPx-1)
