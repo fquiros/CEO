@@ -165,7 +165,7 @@ class telescope_simulator:
     
     
     def get_merged_influence_matrices(self, validacts, dm_rcond=1e-15, ptt_rcond=1e-15, 
-                regularization_factor=5e-4):
+                regularization_factor=5e-4, get_only_descaled_merged_ifmat=False):
         """
         Computes the merged (DM+PTT) Influence Matrix, and its regularized inverse.
         Note: the regularization factor is applied to a term that penalizes DM commands reproducing PTT influence functions (i.e. segment piston, tip, and tilt).
@@ -194,6 +194,10 @@ class telescope_simulator:
         print("--> Computing Merged influence matrices.....")
         DMmat, DMmat_norm, inv_DMmat = self.get_dm_influence_matrices(validacts, rcond=dm_rcond, silent=True)
         PTTmat, PTTmat_norm, inv_PTTmat = self.get_ptt_influence_matrices(rcond=ptt_rcond, silent=True)
+        
+        #---> Return only merged influence matrix
+        if get_only_descaled_merged_ifmat == True:
+            return np.concatenate((PTTmat, DMmat), axis=1)
         
         #---> Merged influence matrix, weighted by the norms.
         mergedIFmat = np.concatenate((PTTmat/PTTmat_norm, DMmat/DMmat_norm), axis=1)
