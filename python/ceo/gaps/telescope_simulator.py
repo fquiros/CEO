@@ -43,8 +43,7 @@ class telescope_simulator:
         array_pixscale = array_size_m / (array_size_pix-1)
         self.pup = gmt_pupil(array_size_pix, array_size_m=array_size_m, array_rot_angle=array_rot_angle,
                        project_truss_onaxis=project_truss_onaxis)
-        self.pup.cleanup()
-
+        
         #---> MEMS model
         print("--> Initializing MEMS model.....")
         act_mask_fname = './data/mems2k/BMC_2k_act_mask.npz'
@@ -90,7 +89,7 @@ class telescope_simulator:
         return (dmwf + pttwf)*self.pup.GMTmask2D
 
     
-    def get_dm_valid_actuators(self, threshold=None):
+    def get_dm_valid_actuators(self, threshold):
         """
         Get MEMS DM illuminated actuators within the pupil mask.
         
@@ -99,17 +98,18 @@ class telescope_simulator:
         threshold : float
             Illumination threshold used to identify illuminated (i.e. valid) actuators.
         
-        Returns:
+        Returns dictionary containing the following items:
         --------
-            1. Valid actuator index vector
-            2. Illumination peak value vector representing actuator visibility within GMT pupil.
+            - dm_valid_acts : valid actuator index vector.
+            - dm_valid_acts_thr : threshold value.
+            - ifpeak : influence function peak value within pupil.
         """
-        assert threshold is not None, "threshold must be defined and be 0.0 <= thr <= 1.0" 
+        assert threshold >= 0.0 and threshold <= 1.0, "threshold must be defined and be 0.0 <= thr <= 1.0" 
         validacts, ifpeak = self.mems2k.get_valid_actuators(self.pup.GMTmask2D, threshold=threshold)
-        return validacts, ifpeak
+        return {'dm_valid_acts': validacts, 'dm_valid_acts_thr': threshold, 'ifpeak': ifpeak}
     
     
-    def get_dm_influence_matrices(self, validacts, rcond=1e-15, silent=False):
+    def compute_dm_influence_matrices(self, validacts, rcond=1e-15, silent=False):
         """
         Computes the DM Influence Matrix, its norm, and its inverse.
         
@@ -121,8 +121,8 @@ class telescope_simulator:
         rcond : float
             SVD threshold for computation of generalized inverse of DMmat. Default: 1e-15
         
-        Returns:
-        --------
+        Sets the following properties:
+        ------------------------------
             1. DMmat : DM Influence Matrix
             2. DMmat_norm : norm of DMmat
             3. inv_DMmat : generalized inverse of DMmat
@@ -134,10 +134,14 @@ class telescope_simulator:
             print('DMmat condition number: %f'%np.linalg.cond(DMmat))
         DMmat_norm  = np.linalg.norm(DMmat)
         inv_DMmat = np.linalg.pinv(DMmat, rcond=rcond)
-        return DMmat, DMmat_norm, inv_DMmat
+        
+        #-- Set properties
+        self.DMmat = DMmat
+        self.DMmat_norm = DMmat_norm
+        self.inv_DMmat = inv_DMmat
     
     
-    def get_ptt_influence_matrices(self, rcond=1e-15, silent=False):
+    def compute_ptt_influence_matrices(self, rcond=1e-15, silent=False):
         """
         Computes the PTT Influence Matrix, its norm, and its inverse.
         
@@ -146,8 +150,8 @@ class telescope_simulator:
         rcond : float
             SVD threshold for computation of generalized inverse of PTTmat. Default: 1e-15
         
-        Returns:
-        --------
+        Sets the following properties:
+        ------------------------------
             1. PTTmat : PTT Influence Matrix
             2. PTTmat_norm : norm of PTTmat
             3. inv_PTTmat : generalized inverse of PTTmat
@@ -161,7 +165,11 @@ class telescope_simulator:
             print('PTTmat condition number: %f'%np.linalg.cond(PTTmat))
         PTTmat_norm = np.linalg.norm(PTTmat)
         inv_PTTmat = np.linalg.pinv(PTTmat, rcond=rcond)
-        return PTTmat, PTTmat_norm, inv_PTTmat
+        
+        #-- Set properties
+        self.PTTmat = PTTmat
+        self.PTTmat_norm = PTTmat_norm
+        self.inv_PTTmat = inv_PTTmat
     
     
     def get_merged_influence_matrices(self, validacts, dm_rcond=1e-15, ptt_rcond=1e-15, 
@@ -191,20 +199,22 @@ class telescope_simulator:
             3. DMmat_norm : norm of DMmat
             4. PTTmat_norm : norm of PTTmat
         """
-        print("--> Computing Merged influence matrices.....")
-        DMmat, DMmat_norm, inv_DMmat = self.get_dm_influence_matrices(validacts, rcond=dm_rcond, silent=True)
-        PTTmat, PTTmat_norm, inv_PTTmat = self.get_ptt_influence_matrices(rcond=ptt_rcond, silent=True)
+        if not hasattr(self, 'DMmat'):
+            print("--> Computing Merged influence matrices.....")
+            self.compute_dm_influence_matrices(validacts, rcond=dm_rcond, silent=True)
+        if not hasattr(self, 'PTTmat'):
+            self.compute_ptt_influence_matrices(rcond=ptt_rcond, silent=True)
         
         #---> Return only merged influence matrix
         if get_only_descaled_merged_ifmat == True:
-            return np.concatenate((PTTmat, DMmat), axis=1)
+            return np.concatenate((self.PTTmat, self.DMmat), axis=1)
         
         #---> Merged influence matrix, weighted by the norms.
-        mergedIFmat = np.concatenate((PTTmat/PTTmat_norm, DMmat/DMmat_norm), axis=1)
+        mergedIFmat = np.concatenate((self.PTTmat/self.PTTmat_norm, self.DMmat/self.DMmat_norm), axis=1)
         
         #--- DM best-fit to PTT modes
-        sptt_dm_comm = inv_DMmat @ PTTmat
-        sptt_dm_bf = DMmat @ sptt_dm_comm
+        sptt_dm_comm = self.inv_DMmat @ self.PTTmat
+        sptt_dm_bf = self.DMmat @ sptt_dm_comm
         sptt_dm_comm /= np.max(np.abs(sptt_dm_comm))
         sptt_dm_comm1 = np.concatenate( (np.zeros((21,21)), sptt_dm_comm) )
         Wsptt = sptt_dm_comm1 @ sptt_dm_comm1.T
@@ -213,6 +223,14 @@ class telescope_simulator:
         reg_CP_mat = mergedIFmat.T @ mergedIFmat + regularization_factor*Wsptt
         inv_mergedIFmat = np.linalg.solve(reg_CP_mat, mergedIFmat.T)
         
-        return mergedIFmat, inv_mergedIFmat, DMmat_norm, PTTmat_norm
-        
-        
+        return mergedIFmat, inv_mergedIFmat
+    
+    
+    def free_memory(self):
+        """
+        Delete influence matrices to save memory.
+        """
+        if hasattr(self, 'DMmat'):
+            del self.DMmat, self.DMmat_norm, self.inv_DMmat
+        if hasattr(self, 'PTTmat'):
+            del self.PTTmat, self.PTTmat_norm, self.inv_PTTmat

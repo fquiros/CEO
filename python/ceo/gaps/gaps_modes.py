@@ -28,8 +28,12 @@ class gaps_modes:
         return self.M2C_DATA['KLF_M2C']
     
     @property
+    def M2Cmat(self):
+        return self.M2C.reshape((self.n_dofs,-1), order='F')
+    
+    @property
     def dm_valid_acts(self):
-        return self.M2C_DATA['dm_valid_acts']
+        return self.M2C_DATA['dm_valid_acts_params']['dm_valid_acts']
     
     
     def compute_modal_shapes(self, tel):
@@ -45,7 +49,7 @@ class gaps_modes:
                     get_only_descaled_merged_ifmat = True)
 
         print("--> Computing modal shapes.....")
-        KLFmat = mergedIFmat @ self.M2C.reshape((self.n_dofs,-1), order='F')
+        KLFmat = mergedIFmat @ self.M2Cmat
         
         mode_wf = np.zeros((tel.pup.nPx,tel.pup.nPx))
         self.KLFcube = np.zeros((tel.pup.nPx,tel.pup.nPx,self.n_mode*self.n_seg))

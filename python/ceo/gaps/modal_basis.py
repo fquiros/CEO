@@ -167,45 +167,45 @@ class fitted_segment_modal_basis:
     smb_obj : segment_modal_basis object
         Object representing theoretical segment modes.
     
-    gaps_obj : telescope_simulator object
+    tel_obj : telescope_simulator object
         Object representing the GAPS telescope simulator (i.e. DM and PTT array).
     
     dm_validacts : numpy vector
         Index vector of valid DM actuators.
     """
-    def __init__(self, smb_obj, gaps_obj, dm_validacts):
+    def __init__(self, smb_obj, tel_obj, dm_validacts):
         assert isinstance(smb_obj, segment_modal_basis), \
           '"smb_obj" must be an instance of "segment_modal_basis".'
-        assert 'telescope_simulator' in str(type(gaps_obj)), \
-          '"gaps_obj" must be an instance of "telescope_simulator".'
+        assert 'telescope_simulator' in str(type(tel_obj)), \
+          '"tel_obj" must be an instance of "telescope_simulator".'
         self._smb = smb_obj
-        self._gaps = gaps_obj
+        self._tel = tel_obj
         self._validacts = dm_validacts
         self._nvacts = len(dm_validacts)
     
     
     def __get_dm_influence_matrices(self):
-        DMmat, DMmat_norm, inv_DMmat = self._gaps.get_dm_influence_matrices(self._validacts)
-        self._DMmat = DMmat
-        self._DMmat_norm = DMmat_norm
-        self._inv_DMmat = inv_DMmat
+        self._tel.compute_dm_influence_matrices(self._validacts)
+        self._DMmat = self._tel.DMmat
+        self._DMmat_norm = self._tel.DMmat_norm
+        self._inv_DMmat = self._tel.inv_DMmat
     
     
     def __get_ptt_influence_matrices(self):
-        PTTmat, PTTmat_norm, inv_PTTmat = self._gaps.get_ptt_influence_matrices()
-        self._PTTmat = PTTmat
-        self._PTTmat_norm = PTTmat_norm
-        self._inv_PTTmat = inv_PTTmat
+        self._tel.compute_ptt_influence_matrices()
+        self._PTTmat = self._tel.PTTmat
+        self._PTTmat_norm = self._tel.PTTmat_norm
+        self._inv_PTTmat = self._tel.inv_PTTmat
     
     
     def __get_merged_influence_matrices(self, regularization_factor):
-        MergedIFmat, inv_MergedIFmat, DMmat_norm, PTTmat_norm = \
-           self._gaps.get_merged_influence_matrices(self._validacts, \
+        MergedIFmat, inv_MergedIFmat = \
+           self._tel.get_merged_influence_matrices(self._validacts, \
                             regularization_factor=regularization_factor)
         self._MergedIFmat = MergedIFmat
         self._inv_MergedIFmat = inv_MergedIFmat
-        self._DMmat_norm = DMmat_norm
-        self._PTTmat_norm = PTTmat_norm
+        self._DMmat_norm = self._tel.DMmat_norm
+        self._PTTmat_norm = self._tel.PTTmat_norm
     
     
     def fit_with_dm_only(self, nmode):

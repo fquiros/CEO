@@ -29,19 +29,20 @@ def compute_gaps_segment_modes():
     pupil_size_in_mems_pitches = 48
     grid_rot_deg = -2.5
 
-    gaps_params = dict(mems_ifunc_fname=mems_ifunc_fname, 
+    mems_params = dict(mems_ifunc_fname=mems_ifunc_fname, 
                        pupil_size_in_mems_pitches=pupil_size_in_mems_pitches,
                        mems_grid_rot_angle=grid_rot_deg)
 
     project_truss_onaxis = False
 
-    gaps = telescope_simulator(**array_params, **gaps_params, 
+    tel = telescope_simulator(**array_params, **mems_params, 
                         project_truss_onaxis = project_truss_onaxis)
 
     #-- DM valid actuators
     #=============================================
     vact_thr = 0.4 # threshold to select illuminated actuators.
-    validacts, ifpeak = gaps.get_dm_valid_actuators(threshold=vact_thr)
+    dm_valid_acts_params = tel.get_dm_valid_actuators(threshold=vact_thr)
+    validacts = dm_valid_acts_params['dm_valid_acts']
 
 
     #---> Fitted segment modes for GAPS
@@ -57,7 +58,7 @@ def compute_gaps_segment_modes():
                        orthonormalize=orthonormalize, 
                        descaled=descaled)
 
-    fkls = fitted_segment_modal_basis(kls, gaps, validacts)
+    fkls = fitted_segment_modal_basis(kls, tel, validacts)
     fkls.gaps_segment_modes(**fkls_params)
 
     #---> Save M2C
@@ -65,9 +66,9 @@ def compute_gaps_segment_modes():
     fname = 'KLF_M2C_20250520_v0.npz'
     fullname = os.path.join(here, 'data', 'M2C', fname)
 
-    tosave = dict(array_params=array_params, KLamp=KLamp, gaps_params=gaps_params,
-                 dm_valid_acts=validacts, dm_valid_acts_thr=vact_thr, ifpeak=ifpeak, 
-                 fkls_params=fkls_params, KLF_M2C=fkls.KLF_M2C)
+    tosave = dict(array_params=array_params, KLamp=KLamp, mems_params=mems_params,
+                  dm_valid_acts_params=dm_valid_acts_params,
+                  fkls_params=fkls_params, KLF_M2C=fkls.KLF_M2C)
 
     np.savez(fullname, **tosave)
     print("Saving to file %s"%fullname)

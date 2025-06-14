@@ -53,10 +53,12 @@ class ptt_array_model:
         PTTmat[:,2] = y_epr[GMTmask2D]
         
         #-- Make sure global PTT modes are orthonormal
-        PTT_Dmat = np.matmul(np.transpose(PTTmat), PTTmat) / nmaskPup
-        PTT_Lmat = np.linalg.cholesky(PTT_Dmat)
-        PTT_inv_Lmat = np.linalg.pinv(PTT_Lmat)
-        PTTmato = np.matmul(PTTmat, np.transpose(PTT_inv_Lmat))
+        PTTmat[:,1] /= np.sqrt(np.sum(PTTmat[:,1]**2)/nmaskPup)
+        PTTmat[:,2] /= np.sqrt(np.sum(PTTmat[:,2]**2)/nmaskPup)
+        #PTT_Dmat = np.matmul(np.transpose(PTTmat), PTTmat) / nmaskPup
+        #PTT_Lmat = np.linalg.cholesky(PTT_Dmat)
+        #PTT_inv_Lmat = np.linalg.pinv(PTT_Lmat)
+        #PTTmato = np.matmul(PTTmat, np.transpose(PTT_inv_Lmat))
 
         #print("WF RMS of global PTT modes:")
         #print(np.array_str(np.sum(PTTmato**2,axis=0)/nmaskPup, precision=2))
@@ -65,7 +67,7 @@ class ptt_array_model:
         segPTTmat = np.zeros((nmaskPup,7*3))
         for gidx in range(3):
             tempMat = np.zeros(array_size_pix**2)
-            tempMat[GMTmask] = PTTmato[:,gidx]
+            tempMat[GMTmask] = PTTmat[:,gidx]
             for segid in range(7):
                 ptt_ifunc = np.zeros(array_size_pix**2)
                 ptt_ifunc[P[segid,:]] = tempMat[P[segid,:]]
