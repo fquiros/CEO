@@ -86,7 +86,11 @@ class atmo_disturbance(SimBlock):
         self._pup = pup_obj
         self._turb_type = turb_type
         self._meanV = meanV
-        self.__Data = None
+        self.__Data = np.zeros((nPx,nPx))
+        self.project_to_mirror_space = False
+        
+        #------ Telemetry buffers
+        self.telemetry_data['tur_wfe'] = []
     
     
     @property
@@ -117,8 +121,23 @@ class atmo_disturbance(SimBlock):
     def tau0(self):
         return 0.314*self.r0/self.meanWindSpeed
     
-        
-    def trigger(self):
+    
+    def set_wavefront_projection(self, IFmat, inv_IFmat):
+        """
+        Load the influence function matrix and its inverse to project the turbulence WF onto DM+PTT space.
+        Note: Make sure to toggle the 'project_to_mirror_space' property to 'True' to active this feature.
+        """
+        assert IFmat.shape[0] == self._pup.nmask and inv_IFmat.shape[1] == self._pup.nmask, \
+                "Size of 'IFmat' and 'inv_IFmat' not compatible with GMT mask in 'pup_obj'."
+        self.__IFmat = IFmat
+        self.__inv_IFmat = inv_IFmat
+    
+    
+    def register_input_method(self):
+        pass
+    
+    
+    def _compute_output(self):
         """
         Triggers propagation through turbulence layers, and updates the output wavefront.
         Note: Use "get_data()" to retrieve the output wavefront.
@@ -139,7 +158,15 @@ class atmo_disturbance(SimBlock):
         #----- Extract the turbulence phase map in the exit pupil
         PhaseTur = np.squeeze((gs.wavefront.phase.host() - self._pup.phase_ref) * gs.wavefront.amplitude.host())
         PhaseTur[self._pup.GMTmask] -= np.mean(PhaseTur[self._pup.GMTmask])  # global piston removed
+        
+        #----- Project to DM+PTT space
+        if self.project_to_mirror_space == True:
+            comm = self.__inv_IFmat @ PhaseTur[self._pup.GMTmask]
+            PhaseTur[self._pup.GMTmask] = self.__IFmat @ comm        
+        
+        #----- Save output buffer and compute telemetry
         self.__Data = PhaseTur.reshape((nPx,nPx))
+        self._updateTelemetry()
     
     
     def get_data(self):
@@ -156,3 +183,16 @@ class atmo_disturbance(SimBlock):
         return np.sqrt(np.sum(self.__Data**2) / self._pup.nmask)
 
 
+    def _updateTelemetry(self):
+        """
+        Updates telemetry buffer.
+        Note: Internal method called by _compute_output()
+        """
+        self.telemetry_data['tur_wfe'] += [self.get_wfe()]
+    
+    
+    def reset(self):
+        """
+        Resets the WF buffer.
+        """
+        self.__Data *= 0
