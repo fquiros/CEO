@@ -27,28 +27,34 @@ class SimBlock(ABC):
     def __init__(self, T_se=None, T_out=None, T_d=0.0):
         super().__init__()
         assert SimBlock.TICK_TIME > 0, "Set TICK_TIME before defining Simulation Blocks!"
-        
-        if T_se == None:
-            self.T_se  = SimBlock.TICK_TIME
-        else:
-            if T_se < SimBlock.TICK_TIME:
-                raise Exception("T_se cannot be smaller than TICK_TIME.")
-            self.T_se = T_se
-        if T_out == None:
-            self.T_out = SimBlock.TICK_TIME
-        else:
-            if T_out < SimBlock.TICK_TIME:
-                raise Exception("T_out cannot be smaller than TICK_TIME.")
-            self.T_out = T_out
+        self.T_se  = SimBlock.TICK_TIME if T_se  is None else T_se
+        self.T_out = SimBlock.TICK_TIME if T_out is None else T_out
         self.T_d = T_d
-        
         self._se_counter = 0
-        self._se_niter = int(self.T_se / SimBlock.TICK_TIME)
-        
         self._integration_counter = 0
-        self._integration_niter = int(self.T_out / SimBlock.TICK_TIME)
-        
         self.telemetry_data = {}
+    
+    @property
+    def T_se(self):
+        return self._T_se
+    
+    @T_se.setter
+    def T_se(self, _T_):
+        if _T_ < SimBlock.TICK_TIME:
+            raise Exception("T_se cannot be smaller than TICK_TIME.")
+        self._T_se = _T_
+        self._se_niter = int(_T_ / SimBlock.TICK_TIME)
+    
+    @property
+    def T_out(self):
+        return self._T_out
+    
+    @T_out.setter
+    def T_out(self, _T_):
+        if _T_ < SimBlock.TICK_TIME:
+            raise Exception("T_out cannot be smaller than TICK_TIME.")
+        self._T_out = _T_
+        self._integration_niter = int(_T_ / SimBlock.TICK_TIME)
     
     
     def trigger(self):
@@ -77,3 +83,10 @@ class SimBlock(ABC):
         """
         for key in self.telemetry_data.keys():
             self.telemetry_data[key] = []
+    
+    def reset_counters(self):
+        """
+        Resets SimBlock internal counters.
+        """
+        self._integration_counter = 0
+        self._se_counter = 0
