@@ -1,6 +1,7 @@
 from ceo import constants, Atmosphere
 from SimBlock import SimBlock
 import numpy as np
+import cupy as cp
 
 
 class atmo_disturbance(SimBlock):
@@ -129,8 +130,8 @@ class atmo_disturbance(SimBlock):
         """
         assert IFmat.shape[0] == self._pup.nmask and inv_IFmat.shape[1] == self._pup.nmask, \
                 "Size of 'IFmat' and 'inv_IFmat' not compatible with GMT mask in 'pup_obj'."
-        self.__IFmat = IFmat
-        self.__inv_IFmat = inv_IFmat
+        self.__IFmat = cp.array(IFmat)
+        self.__inv_IFmat = cp.array(inv_IFmat)
     
     
     def register_input_method(self):
@@ -161,8 +162,8 @@ class atmo_disturbance(SimBlock):
         
         #----- Project to DM+PTT space
         if self.project_to_mirror_space == True:
-            comm = self.__inv_IFmat @ PhaseTur[self._pup.GMTmask]
-            PhaseTur[self._pup.GMTmask] = self.__IFmat @ comm        
+            comm = self.__inv_IFmat @ cp.array(PhaseTur[self._pup.GMTmask])
+            PhaseTur[self._pup.GMTmask] = (self.__IFmat @ comm).get()
         
         #----- Save output buffer and compute telemetry
         self.__Data = PhaseTur.reshape((nPx,nPx))
