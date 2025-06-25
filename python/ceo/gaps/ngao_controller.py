@@ -139,6 +139,9 @@ class ao_controller(SimBlock):
     int_gain : float
         Integrator's gain. Default: 0.5
     
+    forget_factor : float
+        Controller's forgetting factor. Default: 1.0
+    
     pure_delay : int
         Pure (discrete) delay, in number of frames. Default: 1
     
@@ -159,7 +162,8 @@ class ao_controller(SimBlock):
     T_d : float
         Time delay for the simulation block to start operation [in seconds]. Default: 0.0
     """    
-    def __init__(self, RecMat, int_gain=0.5, pure_delay=1, modal_control=False, modes_obj=None, Pp2m=None,
+    def __init__(self, RecMat, int_gain=0.5, forget_factor=1.0, pure_delay=1,
+                 modal_control=False, modes_obj=None, Pp2m=None,
                  T_out=None, T_d=0.0):
         
         #----- SimBlock timing parameters
@@ -169,6 +173,7 @@ class ao_controller(SimBlock):
         self.__modal_control = modal_control
         self.__R = cp.array(RecMat)
         self.g_i = int_gain
+        self.g_f = forget_factor
         
         n_dof = RecMat.shape[0]        
         
@@ -234,7 +239,7 @@ class ao_controller(SimBlock):
         
         #-- Simple integral control
         self.ao_delta_command = (self.__R @ cp.array(self.__meas())).get()
-        self.ao_integr_command = self.ao_integr_command - self.g_i * self.ao_delta_command
+        self.ao_integr_command = self.g_f * self.ao_integr_command - self.g_i * self.ao_delta_command
         
         #-- Update segment piston coefficients with HDFS command (equivalent to IIR state vector update)
         if callable(self.__get_hdfs_command):
