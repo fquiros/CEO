@@ -232,6 +232,37 @@ class gaps_simul:
     def configure(self, **kwargs):
         pass
     
+    
+    def simul_noise(self, toggle=True):
+        """
+        Turns on/off NGWS-P noise simulation.
+        
+        Parameters:
+        -----------
+        toggle : bool
+            If True, WFS noise will be simulated. Default: True
+        """
+        assert isinstance(toggle, bool), "toggle value must be either True or False."
+        self.pwfs.wfs.simul_noise = toggle
+        self.hdfs.wfs.simul_noise = toggle
+    
+    
+    def simul_turb(self, toggle=True):
+        """
+        Turns on/off atmospheric turbulence simulation.
+        
+        Parameters:
+        -----------
+        toggle : bool
+            If True, atmospheric turbulence will be simulated. Default: True
+        """
+        assert isinstance(toggle, bool), "toggle value must be either True or False."
+        if toggle == True:
+            self.atm.T_d = 0.0
+        else:
+            self.atm.T_d = np.inf # <-- do not simulate turbulence
+    
+    
     #===================== Closed-loop simulation ======================================
     def reset_telemetry(self):
         """
