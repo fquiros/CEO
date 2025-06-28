@@ -37,6 +37,7 @@ class wf_combiner(SimBlock):
         self.telemetry_data['seg_wfe'] = []
         self.telemetry_data['spp'] = []
         self.telemetry_data['time_vec'] = []
+        self.telemetry_data['wf_res'] = []
     
     
     def register_input_method(self, get_ptt_comm, get_dm_comm, get_atmo_wf=None):
@@ -88,6 +89,7 @@ class wf_combiner(SimBlock):
         self.telemetry_data['seg_wfe'] += [self.get_segment_wfe()]
         self.telemetry_data['spp'] += [self.get_segment_phase_piston()]
         self.telemetry_data['time_vec'] += [SimBlock.CURRENT_TIME]
+        self.telemetry_data['wf_res'] += [self.get_wavefront()[self._pup.GMTmask2D]]
     
     
     def get_wavefront(self):

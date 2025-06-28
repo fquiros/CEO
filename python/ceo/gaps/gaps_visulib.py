@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from IPython.display import clear_output
+from SimBlock import SimBlock
 
-def pyr_display_signals(pwfs, sx,sy, title=None, fig=None, ax1=None, ax2=None):
+def pyr_display_signals(pwfs, sx,sy, title=None, fig=None, ax1=None, ax2=None, clb_shrink=1.0, clim_step = 0.2):
     """
     Display PWFS slopes (sx, sy) in 2D.
     
@@ -27,6 +29,12 @@ def pyr_display_signals(pwfs, sx,sy, title=None, fig=None, ax1=None, ax2=None):
     
     ax2 : matplotlib axis
         Axis for Sy display.
+
+    clb_shrink : float
+        Colorbar shrinking factor [0,1]. Default: 1.0
+
+    clim_step : float
+        Minimum color range will be [-clim_step, clim_step]. Default: 0.2
     
     Usage:
     ------
@@ -44,14 +52,16 @@ def pyr_display_signals(pwfs, sx,sy, title=None, fig=None, ax1=None, ax2=None):
         
     ax1.set_title(title[0])
     ax1.tick_params(axis='both', which='both', bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
-    imm = ax1.imshow(sx2d, interpolation='None',origin='lower')#, vmin=-1, vmax=1)
-    clb = fig.colorbar(imm, ax=ax1, format="%.4f")
+    vlim = np.ceil(np.max(np.abs(sx2d)) / clim_step) * clim_step
+    imm = ax1.imshow(sx2d, interpolation='none', vmin=-vlim, vmax=vlim, origin='lower')
+    clb = fig.colorbar(imm, ax=ax1, format="%.2f", shrink=clb_shrink)
     clb.ax.tick_params(labelsize=12)    
 
     ax2.set_title(title[1])
     ax2.tick_params(axis='both', which='both', bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
-    imm2 = ax2.imshow(sy2d, interpolation='None',origin='lower')#, vmin=-1, vmax=1)
-    clb2 = fig.colorbar(imm2, ax=ax2, format="%.4f")  
+    vlim = np.ceil(np.max(np.abs(sy2d)) / clim_step) * clim_step
+    imm2 = ax2.imshow(sy2d, interpolation='none', vmin=-vlim, vmax=vlim, origin='lower')
+    clb2 = fig.colorbar(imm2, ax=ax2, format="%.2f", shrink=clb_shrink)
     clb2.ax.tick_params(labelsize=12)    
 
     return (sx2d,sy2d)
@@ -103,3 +113,72 @@ def hdfs_show_fringes(ps, fringes=None, apodize=True, normalize=False, derotate=
             (ax.ravel())[k].axis('off')
 
     plt.tight_layout()
+
+
+def show_live_loop(gaps):
+    """
+    Live display for closed loop simulation.
+    """
+    clear_output(wait=True)
+    fig = plt.figure()
+    fig.set_size_inches((15,10))
+    fig.dpi = 75
+    
+    #------------ Residual WF ---------------------------------
+    ax1 = fig.add_subplot(2,3,1)
+    init_wf = gaps.wf_ctrl.get_wavefront() * 1e6
+    vlim1 = np.ceil(np.max(np.abs(init_wf)) / 0.25) * 0.25
+    im1 = ax1.imshow(init_wf, cmap='viridis', vmin=-vlim1, vmax=vlim1,
+        extent=[-25.5/2, 25.5/2, -25.5/2, 25.5/2], origin='lower')
+    clb1 = fig.colorbar(im1, ax=ax1, shrink=0.6)
+    clb1.set_label('microns WF')
+    clb1.ax.tick_params(labelsize=12)
+    ax1.set_xlabel('m')
+    wf_title ="WF RMS [nm]: %.1f"%(gaps.wf_ctrl.get_wfe()*1e9)
+    ax1.set_title(wf_title)
+
+    #------------ Show DM command ------------------------------
+    ax2 = fig.add_subplot(2,3,2)
+    dmcomm = np.zeros(gaps.tel.mems2k.n_acts)
+    dmcomm[gaps.dm_valid_acts_params['dm_valid_acts']] = gaps.ao_ctrl.get_dm_command() + gaps.wf_ctrl.dm_offset
+    dmcomm2D = gaps.tel.mems2k.get_comm_2D(dmcomm) * 1e6
+    vlim2 = np.ceil(np.nanmax(np.abs(dmcomm2D)) / 0.25) * 0.25
+    im2 = ax2.imshow(dmcomm2D, cmap='viridis', vmin=-vlim2, vmax=vlim2, interpolation='none')#, origin='lower')
+    clb2 = fig.colorbar(im2, ax=ax2, shrink=0.6)
+    clb2.set_label('microns WF')
+    clb2.ax.tick_params(labelsize=12)
+    ax2.set_xlabel('act #')
+    ax2.set_title('DM commands')
+    
+    #------------- PTT WF -----------------------
+    ax3 = fig.add_subplot(2,3,3)
+    pttcomm = gaps.ao_ctrl.get_ptt_command() + gaps.wf_ctrl.ptt_offset
+    wf_ptt = gaps.tel.ptt.get_wf(pttcomm) * 1e6
+    vlim3 = np.ceil(np.max(np.abs(wf_ptt)) / 0.25) * 0.25
+    im3= ax3.imshow(wf_ptt, cmap='viridis', vmin=-vlim3, vmax=vlim3, interpolation='none', origin='lower')
+    clb3 = fig.colorbar(im3, ax=ax3, shrink=0.6)
+    clb3.set_label('microns WF')
+    clb3.ax.tick_params(labelsize=12)
+    ax3.set_title('PTT wavefront')
+    ax3.axis('off')
+
+    #---------- PWFS Sx and Sy signals ----------
+    ax4 = fig.add_subplot(2,3,4)
+    ax5 = fig.add_subplot(2,3,5)
+    pyr_display_signals(gaps.pwfs, *gaps.pwfs.get_measurement(out_format='list'), \
+                            fig=fig, ax1=ax4, ax2=ax5, clb_shrink=0.6)
+    
+    #--------- Show HDFS frame -----------------
+    ax6 = fig.add_subplot(2,3,6)
+    im6 = ax6.imshow(gaps.hdfs.ccd_frame, origin='lower', interpolation='none', \
+            cmap=plt.cm.gist_earth_r, extent = gaps.hdfs._im_range_mas.tolist() * 2)
+    ax6.set_xlabel('mas')
+
+    gaps._tid.toc()
+    fig_title = "iter: %d/%d, ET: %.3f s"%(SimBlock.current_iteration(), 
+                        gaps.totSimulIter, gaps._tid.elapsedTime*1e-3)
+    fig.suptitle(fig_title)
+
+    plt.tight_layout()
+    plt.show()
+    plt.close(fig)    

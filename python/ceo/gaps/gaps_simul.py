@@ -8,6 +8,7 @@ from SimBlock import SimBlock
 from ngwsp_model import pwfs_model, hdfs_model 
 from telescope_simulator import telescope_simulator
 from atmo_disturbance import atmo_disturbance
+from gaps_visulib import show_live_loop
 
 class gaps_simul:
     """
@@ -308,7 +309,7 @@ class gaps_simul:
         return telemetry
     
     
-    def runClosedLoop(self, totSimulTime):
+    def runClosedLoop(self, totSimulTime, liveShow=False):
         """
         Run a closed-loop simulation.
         
@@ -316,6 +317,9 @@ class gaps_simul:
         -----------
         totSimulTime : float
             Total simulated time [s].
+
+        liveShow : bool
+            If True, show telemetry live! (but very slow....)
         
         Returns:
         --------
@@ -332,8 +336,11 @@ class gaps_simul:
             self._tid.tic()
             self.trigger()
             self.currentTime = self.currentTime + self.tickTime
-            self._tid.toc()
-            sys.stdout.write("\r iter: %d/%d, ET: %.3f s, on-axis WF RMS [nm]: %.1f"%(SimBlock.current_iteration(), 
+            if liveShow:
+                show_live_loop(self)
+            else:
+                self._tid.toc()
+                sys.stdout.write("\r iter: %d/%d, ET: %.3f s, on-axis WF RMS [nm]: %.1f"%(SimBlock.current_iteration(), 
                                     self.totSimulIter, self._tid.elapsedTime*1e-3, self.wf_ctrl.get_wfe()*1e9))
-            sys.stdout.flush()
+                sys.stdout.flush()
         return self._collectTelemetry()
