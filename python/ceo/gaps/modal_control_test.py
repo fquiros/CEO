@@ -223,4 +223,25 @@ class modal_control_test(gaps_simul):
                                     'wf_last_eigenmode': wf_last_eigenmode,
                                     'reg_factor': global_pist_reg_factor,
                                     'recmat': R_HDFS})
+
+    
+    def update_hdfs_rate(self, T_out: float, T_d: float, ctrl_wait_n_frames: int = 0):
+        """
+        Update the HDFS (sensor and controller) timing settings.
+    
+        Parameters:
+        -----------
+        T_out : float
+            Integration time [s].
         
+        T_d : float
+            Time delay for the HDFS to start operation [in seconds].
+    
+        ctrl_wait_n_frames : int
+            Number of extra HDFS frames that the controller waits before computing commands. Default: 0
+        """
+        # --The HDFS integration time / HDFS controller's rate must be the same:
+        self.hdfs.T_out = T_out
+        self.hdfs_ctrl.T_out = T_out
+        self.hdfs.T_d = T_d
+        self.hdfs_ctrl.T_d = T_d + T_out * ctrl_wait_n_frames

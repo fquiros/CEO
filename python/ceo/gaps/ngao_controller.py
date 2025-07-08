@@ -245,7 +245,7 @@ class ao_controller(SimBlock):
         if callable(self.__get_hdfs_command):
             hdfs_command = self.__get_hdfs_command()
             if np.sum(np.abs(hdfs_command)) > 0:
-                sys.stdout.write("\nHDFS recovering segment piston!\n")
+                #sys.stdout.write("\nHDFS recovering segment piston!\n")
                 self.ao_integr_command += self.__Pp2m @ hdfs_command
         
         #-- Update delay buffer

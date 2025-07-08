@@ -309,7 +309,7 @@ class gaps_simul:
         return telemetry
     
     
-    def runClosedLoop(self, totSimulTime, liveShow=False):
+    def runClosedLoop(self, totSimulTime, liveShow=False, verbose=True):
         """
         Run a closed-loop simulation.
         
@@ -319,7 +319,10 @@ class gaps_simul:
             Total simulated time [s].
 
         liveShow : bool
-            If True, show telemetry live! (but very slow....)
+            If True, show telemetry live! (but very slow....). Default: False
+
+        verbose : bool
+            Display status of simulation live. Default: True
         
         Returns:
         --------
@@ -340,7 +343,8 @@ class gaps_simul:
                 show_live_loop(self)
             else:
                 self._tid.toc()
-                sys.stdout.write("\r iter: %d/%d, ET: %.3f s, on-axis WF RMS [nm]: %.1f"%(SimBlock.current_iteration(), 
+                if verbose:
+                    sys.stdout.write("\r iter: %d/%d, ET: %.3f s, on-axis WF RMS [nm]: %.1f"%(SimBlock.current_iteration(), 
                                     self.totSimulIter, self._tid.elapsedTime*1e-3, self.wf_ctrl.get_wfe()*1e9))
                 sys.stdout.flush()
         return self._collectTelemetry()
