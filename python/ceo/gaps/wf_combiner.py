@@ -89,8 +89,8 @@ class wf_combiner(SimBlock):
         self.telemetry_data['wfe'] += [self.get_wfe()]
         self.telemetry_data['seg_wfe'] += [self.get_segment_wfe()]
         self.telemetry_data['spp'] += [self.get_segment_phase_piston()]
-        self.telemetry_data['time_vec'] += [SimBlock.CURRENT_TIME]
         self.telemetry_data['spp_rms'] += [self.get_segment_phase_piston_rms()]
+        self.telemetry_data['time_vec'] += [SimBlock.CURRENT_TIME + SimBlock.TICK_TIME]
         #self.telemetry_data['wf_res'] += [self.get_wavefront()[self._pup.GMTmask2D]]
     
     

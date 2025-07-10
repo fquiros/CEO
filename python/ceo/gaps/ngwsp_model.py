@@ -233,7 +233,7 @@ class pwfs_model(SimBlock):
         Note: Internal method called by _compute_output()
         """
         self.telemetry_data['pwfs_meas'] += [self.get_measurement()]
-        #self.telemetry_data['pwfs_time_vec'] += [SimBlock.CURRENT_TIME]
+        #self.telemetry_data['pwfs_time_vec'] += [SimBlock.CURRENT_TIME + SimBlock.TICK_TIME]
         self.telemetry_data['pwfs_meas_rms'] += [self.measurement_rms()]
 
 
@@ -478,7 +478,7 @@ class hdfs_model(SimBlock):
         self.telemetry_data['hdfs_meas'] += [self.get_measurement()]
         self.telemetry_data['hdfs_fringes'] += \
             [self.extract_fringes(apodize=True, normalize=False, derotate=True).get()]
-        self.telemetry_data['hdfs_time_vec'] += [SimBlock.CURRENT_TIME]
+        self.telemetry_data['hdfs_time_vec'] += [SimBlock.CURRENT_TIME + SimBlock.TICK_TIME]
     
     
 

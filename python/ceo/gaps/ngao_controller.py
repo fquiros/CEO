@@ -99,7 +99,7 @@ class hdfs_controller(SimBlock):
         Note: Internal method called by _compute_output()
         """
         self.telemetry_data['hdfs_ctrl_command'] += [self.get_piston_command()]
-        self.telemetry_data['hdfs_ctrl_time_vec'] += [SimBlock.CURRENT_TIME]
+        self.telemetry_data['hdfs_ctrl_time_vec'] += [SimBlock.CURRENT_TIME + SimBlock.TICK_TIME]
     
         
     def get_ptt_command(self):
@@ -269,7 +269,7 @@ class ao_controller(SimBlock):
         """
         self.telemetry_data['ao_delta_command'] += [self.ao_delta_command]
         self.telemetry_data['ao_integr_command'] += [self.ao_integr_command]        
-        #self.telemetry_data['ao_ctrl_time_vec'] += [SimBlock.CURRENT_TIME]
+        #self.telemetry_data['ao_ctrl_time_vec'] += [SimBlock.CURRENT_TIME + SimBlock.TICK_TIME]
     
     
     def get_dm_command(self):

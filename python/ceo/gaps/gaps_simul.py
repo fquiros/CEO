@@ -335,7 +335,7 @@ class gaps_simul:
         self.reset_telemetry()
         self.reset()
         
-        while self.currentTime <= self.totSimulTime:
+        while self.currentTime < self.totSimulTime:
             self._tid.tic()
             self.trigger()
             self.currentTime = self.currentTime + self.tickTime
@@ -346,5 +346,5 @@ class gaps_simul:
                 if verbose:
                     sys.stdout.write("\r iter: %d/%d, ET: %.3f s, on-axis WF RMS [nm]: %.1f"%(SimBlock.current_iteration(), 
                                     self.totSimulIter, self._tid.elapsedTime*1e-3, self.wf_ctrl.get_wfe()*1e9))
-                sys.stdout.flush()
+                    sys.stdout.flush()
         return self._collectTelemetry()
