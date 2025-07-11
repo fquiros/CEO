@@ -19,6 +19,15 @@ class hdfs_controller(SimBlock):
     int_gain : float
         Integrator's gain (when operating in bootstrap mode). Default: 0.5
     
+    Psig2spp : numpy vector (12 elements)
+        Scaling factor to convert HDFS signal vector to differential segment phase piston between segment pairs (i.e. pairs defined by the HDFS mask).
+    
+    intmat : numpy array
+        HDFS segment piston interaction matrix. (Needed if RecMat needs to be recomputed).
+    
+    global_pist_reg_factor : float
+        global piston penalizing factor for the HDFS reconstructor (Needed if RecMat needs to be recomputed).
+    
     eject_thr : float
         Segment ejection detection threshold [in meters] (when operating in baseline mode). Default: 380 nm
     
@@ -33,7 +42,8 @@ class hdfs_controller(SimBlock):
     T_d : float
         Time delay for the simulation block to start operation [in seconds]. Default: 0.0
     """    
-    def __init__(self, RecMat, operation_mode='bootstrap', int_gain=0.5, 
+    def __init__(self, RecMat, operation_mode='bootstrap', int_gain=0.5,
+                 Psig2spp=None, intmat=None, global_pist_reg_factor=None,
                  eject_thr=380e-9, capture_thr=10e-6,
                  T_out=None, T_d=0.0):
         
@@ -42,6 +52,10 @@ class hdfs_controller(SimBlock):
         
         #----- Properties
         self.__R = RecMat
+        self._Psig2spp = Psig2spp
+        self._intmat = intmat
+        self._global_pist_reg_factor = global_pist_reg_factor
+        
         self.operation_mode = operation_mode
         if self.operation_mode == 'bootstrap':
             self.g_i = int_gain
@@ -55,6 +69,7 @@ class hdfs_controller(SimBlock):
         #------ Telemetry buffers
         self.telemetry_data['hdfs_ctrl_command'] = []
         self.telemetry_data['hdfs_ctrl_time_vec'] = []
+        self.telemetry_data['hdfs_meas_quality'] = []
     
     
     def register_input_method(self, hdfs_get_measurement):
@@ -81,8 +96,19 @@ class hdfs_controller(SimBlock):
         In "bootstrap" operation mode, it delivers an integrated HDFS command.
         In "baseline operation mode", it delivers a thresholded command to recover ejected segments.
         NOTE: This internal function is called by the trigger() method defined in the SimBlock parent class.
-        """ 
-        PISTvec = self.__R @ self.__meas()
+        """
+        hdfs_meas = self.__meas()
+        
+        #--> Deal with possible pair of blurred fringes
+        self._quality_control(hdfs_meas)
+        
+        if self.hdfs_meas_quality == 1.0:
+            PISTvec = self.__R @ hdfs_meas
+        elif self.hdfs_meas_quality == 0.5:
+            PISTvec = self.__R_adhoc @ hdfs_meas
+        else:
+            PISTvec = np.zeros(7)
+            
         if self.operation_mode == 'bootstrap':
             self.hdfs_command = self.hdfs_command - self.g_i * PISTvec
         elif self.operation_mode == 'baseline':
@@ -92,6 +118,50 @@ class hdfs_controller(SimBlock):
         
         self._updateTelemetry()       
     
+
+    def _quality_control(self, hdfs_meas):
+        """
+        Identify blurred fringes, sets the "hdfs_meas_quality" metric:
+            1.0: good measurement
+            0.0: bad measurement (HDFS vector discarded)
+            0.5: partially usable measurement. Ad-hoc HDFS reconstructor provided.
+        """
+        hdfs_meas_nm = hdfs_meas * self._Psig2spp * 1e9 #in nm
+        meas1 = hdfs_meas_nm[0:7]
+        meas2 = hdfs_meas_nm[7:]
+        QualityCheck = np.abs(meas1 + meas2) / np.sqrt(2)
+        
+        if np.all(QualityCheck < self.eject_thr*1e9):
+            self.hdfs_meas_quality = 1.0
+        else:
+            idx_bad_meas, = np.where(QualityCheck >= self.eject_thr*1e9)
+            idx_bad_meas = np.concatenate((idx_bad_meas, idx_bad_meas+7)) #pair of HDFS SAs
+            sys.stdout.write(('\nBad HDFS meas pairs: '+np.array_str(idx_bad_meas)))
+            
+            if idx_bad_meas.size > 2:
+                self.hdfs_meas_quality = 0.0
+                #sys.stdout.write('\nHDFS Measurement DISCARDED.\n')
+            else:
+                self.hdfs_meas_quality = 0.5
+                #sys.stdout.write("\nHDFS Measurement PARTIALLY USED.\n")
+                self._recompute_hdfs_reconstructor(idx_bad_meas)
+
+
+    def _recompute_hdfs_reconstructor(self, idx_bad_meas):
+        """
+        Recompute HDFS reconstructor weighing out bad measurements.
+
+        Parameters:
+        -----------
+        idx_bad_meas : numpy array
+            Index of bad measurements
+        """
+        cnninv0 = np.diag(np.ones(14))
+        cnninv0[idx_bad_meas,idx_bad_meas] = 0 # remove the bad measurement(s)
+        HDFS_reg_mat = self._intmat.T @ cnninv0 @ self._intmat + \
+                       self._global_pist_reg_factor * np.ones((7,7))
+        self.__R_adhoc = np.linalg.solve(HDFS_reg_mat, self._intmat.T @ cnninv0)
+    
     
     def _updateTelemetry(self):
         """
@@ -100,6 +170,7 @@ class hdfs_controller(SimBlock):
         """
         self.telemetry_data['hdfs_ctrl_command'] += [self.get_piston_command()]
         self.telemetry_data['hdfs_ctrl_time_vec'] += [SimBlock.CURRENT_TIME + SimBlock.TICK_TIME]
+        self.telemetry_data['hdfs_meas_quality'] += [self.hdfs_meas_quality]
     
         
     def get_ptt_command(self):

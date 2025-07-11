@@ -61,9 +61,12 @@ class zonal_control_test(gaps_simul):
         
         #--> Setup HDFS segment piston controller (baseline mode):
         self.hdfs_ctrl = hdfs_controller(self.calib_repo['spp-hdfs']['recmat'],
-                                         operation_mode = 'baseline', 
-                                         T_out = self.hdfs.T_out,
-                                         T_d = self.hdfs.T_d)
+                     operation_mode = 'baseline',
+                     Psig2spp = self.calib_repo['spp-hdfs']['Psig2spp'],
+                     intmat = self.calib_repo['spp-hdfs']['intmat'],
+                     global_pist_reg_factor = self.calib_repo['spp-hdfs']['reg_factor'],
+                     T_out = self.hdfs.T_out,
+                     T_d = self.hdfs.T_d)
         
         #--> Setup WF combiner:
         mergedIFmat_descaled = self.tel.get_merged_influence_matrices(validacts,
@@ -195,6 +198,10 @@ class zonal_control_test(gaps_simul):
         D_DM_HDFS = interaction_matrix(self.hdfs, spp_dm_bf_cube, np.arange(7), amp_wf=amp_wf)
         self.calib_repo['spp-hdfs']['intmat'] = D_DM_HDFS
         self.hdfs.wfs.simul_noise = simul_noise_status
+        
+        #--> Scale factor HDFS signal to differential piston between segment pairs (14 values)
+        Psig2spp = 1 / np.max(np.abs(D_DM_HDFS), axis=1)
+        self.calib_repo['spp-hdfs']['Psig2spp'] = Psig2spp
         
         #--> SVD analysis
         sys.stdout.write("Computing HDFS Reconstructor...\n")

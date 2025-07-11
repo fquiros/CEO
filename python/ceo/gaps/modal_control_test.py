@@ -13,7 +13,7 @@ class modal_control_test(gaps_simul):
     Modal control test on GAPS.
     """
     def configure(self, m2c_file, pure_delay=1, modal_amp_max=100e-9, spp_amp=1e-6,
-                 global_pist_reg_factor=1e11):
+                 global_pist_reg_factor=2e11):
         """
         Set Modal Control with the DM+PTT array, driven by the PWFS.
                 
@@ -36,7 +36,7 @@ class modal_control_test(gaps_simul):
             NOTE: Segment piston is produced with the PTT array.
         
         global_pist_reg_factor : float
-            global piston penalizing factor for the HDFS reconstructor. Default: 1e11        
+            global piston penalizing factor for the HDFS reconstructor. Default: 2e11
         """
         
         #--> Load modal basis definition:
@@ -69,9 +69,12 @@ class modal_control_test(gaps_simul):
         
         #--> Setup HDFS segment piston controller (baseline mode):
         self.hdfs_ctrl = hdfs_controller(self.calib_repo['spp-hdfs']['recmat'],
-                                         operation_mode = 'baseline',
-                                         T_out = self.hdfs.T_out,
-                                         T_d = self.hdfs.T_d)
+                     operation_mode = 'baseline',
+                     Psig2spp = self.calib_repo['spp-hdfs']['Psig2spp'],
+                     intmat = self.calib_repo['spp-hdfs']['intmat'],
+                     global_pist_reg_factor = self.calib_repo['spp-hdfs']['reg_factor'],
+                     T_out = self.hdfs.T_out,
+                     T_d = self.hdfs.T_d)
         
         #--> Setup WF combiner:
         mergedIFmat_descaled = self.tel.get_merged_influence_matrices(validacts,
@@ -200,6 +203,10 @@ class modal_control_test(gaps_simul):
             np.arange(7), amp_wf=amp_wf)
         self.calib_repo['spp-hdfs']['intmat'] = D_HDFS
         self.hdfs.wfs.simul_noise = simul_noise_status
+        
+        #--> Scale factor HDFS signal to differential piston between segment pairs (14 values)
+        Psig2spp = 1 / np.max(np.abs(D_HDFS), axis=1)
+        self.calib_repo['spp-hdfs']['Psig2spp'] = Psig2spp
         
         #--> SVD analysis
         sys.stdout.write("Computing HDFS Reconstructor...\n")
