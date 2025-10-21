@@ -15,6 +15,9 @@ class segment_modal_basis:
     
     array_rot_angle : float
         Angle of rotation in degrees of the GMT pupil. Default: 0 deg
+
+    N_MODE : int
+        Number of modes per segment. Default: 300
         
     Usage:
     -------
@@ -25,10 +28,10 @@ class segment_modal_basis:
         - get_segkl_wf() for segment KL modes.
         - get_segzern_wf() for segment Zernike modes.
     """
-    def __init__(self, array_size_pix, array_size_m = 25.5, array_rot_angle = 0.0):
+    def __init__(self, array_size_pix, array_size_m = 25.5, array_rot_angle = 0.0, N_MODE=300):
         
         #-- Initialize CEO objects used to generate the theoretical modes
-        gmt = GMT_MX(M2_mirror_modes="M2_OC36p_OrthoNorm_EP_KarhunenLoeveModes", M2_N_MODE=300)
+        gmt = GMT_MX(M2_mirror_modes="M2_OC36p_OrthoNorm_EP_KarhunenLoeveModes", M2_N_MODE=N_MODE)
         gmt.project_truss_onaxis = False
         gs = Source('R+I', rays_box_size = array_size_m, 
                         rays_box_sampling = array_size_pix, 
@@ -156,6 +159,19 @@ class segment_modal_basis:
         wf = np.zeros((self._nPx**2))
         wf[self._P[segId,:]] = self.segZmat[segId][:,modenum]
         return wf.reshape((self._nPx, self._nPx))
+
+
+    def get_segkl_cube(self):
+        """
+        Returns a cube of phase maps for the selected number of modes.
+        """
+        KLcube = np.zeros((self._nPx, self._nPx, self.n_modes_per_segment*7))
+
+        for segId in range(7):
+            for modenum in range(self.n_modes_per_segment):
+                idx = segId*self.n_modes_per_segment + modenum
+                KLcube[:,:,idx] = self.get_segkl_wf(segId, modenum)
+        return KLcube
 
 
 class fitted_segment_modal_basis:
