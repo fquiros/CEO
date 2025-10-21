@@ -154,7 +154,7 @@ class pwfs_model(SimBlock):
     @property
     def ccd_frame(self):
         extr = self.wfs._extr
-        return self.wfs.ccd_frame[extr:-1-extr, extr:-1-extr]
+        return self.wfs.ccd_frame[extr:-extr, extr:-extr]
     
     @property
     def mag(self):
