@@ -180,7 +180,7 @@ class zonal_control_test(gaps_simul):
         if not hasattr(self.tel, 'PTTmat'):
             self.tel.compute_ptt_influence_matrices(silent=True)
         
-        spp_dm_comm = self.tel.inv_DMmat @ self.tel.PTTmat[:,0:7]
+        spp_dm_comm = self.tel.inv_DMmat @ self.tel.PTTmat[:,0::3]
         spp_dm_bf = self.tel.DMmat @ spp_dm_comm
         self.calib_repo['spp-hdfs']['Pp2m'] = spp_dm_comm
         

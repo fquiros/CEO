@@ -180,12 +180,13 @@ class wf_combiner(SimBlock):
             pistscramble  = np.random.normal(loc=0.0, scale=1, size=7)
             pistscramble *= piston_rms / np.std(pistscramble)
             pistscramble -= np.mean(pistscramble)
-            self.ptt_offset[0:7] += pistscramble
+            self.ptt_offset[0::3] += pistscramble
             
         if do_tiptilt == True:
             TTscramble = np.random.normal(loc=0.0, scale=1, size=14)
             TTscramble *= tiptilt_rms / np.std(TTscramble)
-            self.ptt_offset[7:] += TTscramble
+            self.ptt_offset[1::3] += TTscramble[0:7]
+            self.ptt_offset[2::3] += TTscramble[7:]
         
         if do_dm_acts == True:
             DMzonalScramble = np.random.normal(loc=0.0, scale=1, size=self._nvacts)
