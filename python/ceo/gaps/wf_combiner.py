@@ -137,7 +137,7 @@ class wf_combiner(SimBlock):
         return np.sqrt(np.mean(spp**2) - np.mean(spp)**2)
         
     
-    def set_scramble(self, do_piston=False, piston_rms=0.0,
+    def set_scramble(self, ptt_offset=None, dm_offset=None, do_piston=False, piston_rms=0.0,
                          do_tiptilt=False, tiptilt_rms=0.0,
                          do_dm_acts=False, dm_acts_rms=0.0):
                          #do_modes=False, modes_rms=0.0, modal_scaling=True):
@@ -146,6 +146,12 @@ class wf_combiner(SimBlock):
         
         Parameters:
         -----------
+        ptt_offset : numpy array [21]
+            Desired PTT array offset. Default: None
+
+        dm_offset : numpy array [size of number of valid actuators]
+            Desired DM offset. Default: None
+        
         do_piston : bool
             If True, introduce a random segment piston initial offset. Default: False
         
@@ -164,6 +170,12 @@ class wf_combiner(SimBlock):
         dm_acts_rms : float
             wavefront RMS of random initial offset [m WF RMS].
         """
+        if ptt_offset is not None:
+            self.ptt_offset += ptt_offset
+
+        if dm_offset is not None:
+            self.dm_offset += dm_offset
+            
         if do_piston == True:
             pistscramble  = np.random.normal(loc=0.0, scale=1, size=7)
             pistscramble *= piston_rms / np.std(pistscramble)
