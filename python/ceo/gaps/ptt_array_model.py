@@ -71,7 +71,8 @@ class ptt_array_model:
             for segid in range(7):
                 ptt_ifunc = np.zeros(array_size_pix**2)
                 ptt_ifunc[P[segid,:]] = tempMat[P[segid,:]]
-                segPTTmat[:,gidx*7+segid] = ptt_ifunc[GMTmask]
+                #segPTTmat[:,gidx*7+segid] = ptt_ifunc[GMTmask]
+                segPTTmat[:,gidx + segid*3] = ptt_ifunc[GMTmask]
         
         #-- Orthonormalize segment PTT modes
         segPTT_Dmat = np.matmul(np.transpose(segPTTmat), segPTTmat)/np.tile(npseg,3)
@@ -84,7 +85,7 @@ class ptt_array_model:
         
         #-- Make sure P2V of segment TT modes equals 4
         for ttidx in range(7*2):
-            segPTTmato[:,7+ttidx] *= (2.0 / np.max(segPTTmato[:,7+ttidx]))        
+            segPTTmato[:,7+ttidx] *= (2.0 / np.max(segPTTmato[:,7+ttidx]))    
         
         #-- Create PTT array Influence Functions Cube
         self.IFcube = np.zeros((array_size_pix,array_size_pix,7*3))
