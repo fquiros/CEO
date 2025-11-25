@@ -71,8 +71,7 @@ class ptt_array_model:
             for segid in range(7):
                 ptt_ifunc = np.zeros(array_size_pix**2)
                 ptt_ifunc[P[segid,:]] = tempMat[P[segid,:]]
-                #segPTTmat[:,gidx*7+segid] = ptt_ifunc[GMTmask]
-                segPTTmat[:,gidx + segid*3] = ptt_ifunc[GMTmask]
+                segPTTmat[:,gidx*7+segid] = ptt_ifunc[GMTmask]
         
         #-- Orthonormalize segment PTT modes
         segPTT_Dmat = np.matmul(np.transpose(segPTTmat), segPTTmat)/np.tile(npseg,3)
