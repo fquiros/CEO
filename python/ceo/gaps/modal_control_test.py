@@ -199,7 +199,7 @@ class modal_control_test(gaps_simul):
         simul_noise_status = self.hdfs.simul_noise
         self.hdfs.wfs.simul_noise = False
         D_HDFS = interaction_matrix(self.hdfs, \
-            self.tel.ptt.IFcube[:,:,0:7] * self.tel.pup.GMTmask2D[:,:,np.newaxis], \
+            self.tel.ptt.IFcube[:,:,0::3] * self.tel.pup.GMTmask2D[:,:,np.newaxis], \
             np.arange(7), amp_wf=amp_wf)
         self.calib_repo['spp-hdfs']['intmat'] = D_HDFS
         self.hdfs.wfs.simul_noise = simul_noise_status
@@ -214,7 +214,7 @@ class modal_control_test(gaps_simul):
         
         #--> Compute shape of last eigenmode
         ptt_comm = np.zeros(21)
-        ptt_comm[0:7] = VVT1[-1,:]
+        ptt_comm[0::3] = VVT1[-1,:]
         wf_last_eigenmode = self.tel.ptt.get_wf(ptt_comm)
         
         #--> Regularization penalizing global piston:

@@ -179,7 +179,7 @@ class hdfs_controller(SimBlock):
         Note: the output is delivered as a full 21-element PTT command.
         """
         ptt_command = np.zeros(21)
-        ptt_command[0:7] = self.get_piston_command()
+        ptt_command[0::3] = self.get_piston_command()
         return ptt_command
     
     
@@ -352,7 +352,7 @@ class ao_controller(SimBlock):
     
     def get_ptt_command(self):
         """
-        Get the DM command from the AO controller.
+        Get the PTT command from the AO controller.
         """
         return self.ptt_command[:,-1]
     

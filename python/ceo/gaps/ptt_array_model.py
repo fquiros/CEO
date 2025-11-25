@@ -84,7 +84,7 @@ class ptt_array_model:
         
         #-- Make sure P2V of segment TT modes equals 4
         for ttidx in range(7*2):
-            segPTTmato[:,7+ttidx] *= (2.0 / np.max(segPTTmato[:,7+ttidx]))
+            segPTTmato[:,7+ttidx] *= (2.0 / np.max(segPTTmato[:,7+ttidx]))        
         
         #-- Create PTT array Influence Functions Cube
         self.IFcube = np.zeros((array_size_pix,array_size_pix,7*3))
@@ -92,7 +92,7 @@ class ptt_array_model:
             for segid in range(7):
                 wf1 = np.zeros((array_size_pix**2))
                 wf1[GMTmask] = segPTTmato[:,gidx*7+segid]
-                self.IFcube[:,:,gidx*7+segid] = wf1.reshape((array_size_pix,array_size_pix))
+                self.IFcube[:,:,gidx+3*segid] = wf1.reshape((array_size_pix,array_size_pix))
     
     
     def get_wf(self, ptt_command):
@@ -104,9 +104,7 @@ class ptt_array_model:
         ptt_command : numpy array.
             21-element PTT command.
             Note: The command must be ordered in this way:
-                1. segment piston (x7)
-                2. segment x-tilt (x7)
-                3. segment y-tilt (x7)
+                S1 pist, S1 x-tilt, S1 y-tilt, S2 pist, S2 x-tilt, S2 y-tilt, ..., S7 pist, S7 x-tilt, S7 y-tilt
         """
         return np.sum(self.IFcube * ptt_command, axis=2)        
 
