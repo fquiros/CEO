@@ -1,6 +1,7 @@
 import numpy as np
 import os
 from gaps_utilities import load_dictionary_from_file
+from telescope_simulator import telescope_simulator
 
 class gaps_modes:
     """
@@ -36,7 +37,7 @@ class gaps_modes:
         return self.M2C_DATA['dm_valid_acts_params']['dm_valid_acts']
     
     
-    def compute_modal_shapes(self, tel):
+    def compute_modal_shapes(self, project_truss_onaxis: bool) -> None:
         """
         Compute the cube of modal shapes.
         
@@ -45,6 +46,9 @@ class gaps_modes:
         tel : telescope_simulator object
             Telescope Simulator object from which to retrieve the influence functions.
         """
+        tel = telescope_simulator(**self.M2C_DATA['array_params'], 
+                **self.M2C_DATA['mems_params'], project_truss_onaxis = project_truss_onaxis)
+        
         mergedIFmat = tel.get_merged_influence_matrices(self.dm_valid_acts, 
                     get_only_descaled_merged_ifmat = True)
 

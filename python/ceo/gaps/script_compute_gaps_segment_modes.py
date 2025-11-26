@@ -24,7 +24,8 @@ def compute_gaps_segment_modes():
 
     #---> GAPS telescope simulator (DM+PTT) model
     #=============================================
-    ref_ifunc_fname = 'MagAO-X_MEMS2k_ReferenceIF.npz'
+    #ref_ifunc_fname = 'MagAO-X_MEMS2k_ReferenceIF.npz'
+    ref_ifunc_fname = 'GAPS_MEMS2k_ReferenceIF_20250902.npz'
     mems_ifunc_fname = os.path.join(here, 'data', 'mems2k', ref_ifunc_fname)
     pupil_size_in_mems_pitches = 48
     grid_rot_deg = -2.5
@@ -63,7 +64,7 @@ def compute_gaps_segment_modes():
 
     #---> Save M2C
     #=============================================
-    fname = 'KLF_M2C_20250520_v0.npz'
+    fname = 'KLF_M2C_20251125_v0.npz'
     fullname = os.path.join(here, 'data', 'M2C', fname)
 
     tosave = dict(array_params=array_params, KLamp=KLamp, mems_params=mems_params,
